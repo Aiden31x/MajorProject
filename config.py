@@ -12,7 +12,8 @@ load_dotenv()
 # Model & API Configuration
 # ================================================================
 MODEL_PATH = os.getenv("MODEL_PATH", "/Users/aiden/ClauseCraft(Minor)/9epochs-90 (1)")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")  # Stable release June 2025
 
 # ================================================================
 # RAG Configuration

@@ -167,6 +167,58 @@ class ClauseStore:
         print(f"✅ Successfully stored {len(clauses)} clauses!")
         return clause_ids
 
+    def add_pdf_pages(self, pages: List[dict], source_doc: str, timestamp: str) -> List[str]:
+        """
+        Add PDF pages to the knowledge base for context-aware RAG.
+
+        Args:
+            pages: List of page dictionaries with "page" and "text" keys
+            source_doc: Source PDF filename
+            timestamp: ISO timestamp when PDF was processed
+
+        Returns:
+            List of page IDs
+
+        Example:
+            >>> pages = [
+            ...     {"page": 1, "text": "Page 1 content..."},
+            ...     {"page": 2, "text": "Page 2 content..."}
+            ... ]
+            >>> page_ids = clause_store.add_pdf_pages(pages, "lease.pdf", "2024-01-01T00:00:00")
+        """
+        if not pages:
+            return []
+
+        page_ids = [f"{source_doc}_PAGE_{p['page']:03d}" for p in pages]
+        texts = [p["text"] for p in pages]
+
+        # Batch encode for efficiency
+        print(f"🔄 Generating embeddings for {len(pages)} pages from {source_doc}...")
+        embeddings = self.embedding_model.encode(
+            texts,
+            convert_to_tensor=False,
+            show_progress_bar=True
+        ).tolist()
+
+        metadatas = [{
+            "page": p["page"],
+            "source_doc": source_doc,
+            "timestamp": timestamp,
+            "type": "pdf_page"  # Distinguish from old clause-based storage
+        } for p in pages]
+
+        # Batch insert
+        print(f"💾 Storing {len(pages)} pages in ChromaDB...")
+        self.collection.add(
+            ids=page_ids,
+            embeddings=embeddings,
+            documents=texts,
+            metadatas=metadatas
+        )
+
+        print(f"✅ Successfully stored {len(pages)} pages from {source_doc}!")
+        return page_ids
+
     def retrieve_similar_clauses(
         self,
         query: str,

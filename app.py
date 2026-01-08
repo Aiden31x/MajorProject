@@ -6,12 +6,11 @@ import os
 from datetime import datetime
 from collections import Counter
 import gradio as gr
-from groq import Groq
+import google.generativeai as genai
 
 # Import from new modules
-from config import GROQ_API_KEY, APP_TITLE, APP_DESCRIPTION, SERVER_NAME, SERVER_PORT
-from classifier import LeaseLegalClassifier
-from pdf_utils import extract_text_from_pdf, split_into_clauses
+from config import GEMINI_API_KEY, GEMINI_MODEL, APP_TITLE, APP_DESCRIPTION, SERVER_NAME, SERVER_PORT
+from pdf_utils import extract_text_by_pages
 from rag import ClauseStore
 
 # ================================================================
@@ -22,238 +21,459 @@ print("🏢 ClauseCraft: AI-Powered Lease Agreement Analyzer with RAG")
 print("=" * 60)
 
 try:
-    print("\n📦 Initializing classifier...")
-    classifier = LeaseLegalClassifier()
-
     print("\n📦 Initializing RAG system...")
     clause_store = ClauseStore()
 
     print("\n✅ All systems ready!")
     print("=" * 60 + "\n")
 except Exception as e:
-    print(f"❌ Error initializing components: {e}")
-    print("Please ensure your model files are in the correct directory")
+    print(f"❌ Error initializing RAG system: {e}")
     exit(1)
 
 # ================================================================
-# Enhanced LLM Analysis with RAG Grounding
+# LLM-Based Clause Extraction and Analysis with RAG Grounding
 # ================================================================
-def analyze_with_grounded_llm(clauses_with_preds, source_doc, groq_api_key):
+def extract_and_analyze_with_llm(full_pdf_text, source_doc, gemini_api_key):
     """
-    Enhanced LLM analysis with RAG-based evidence grounding.
+    Use LLM (Gemini) to extract and classify clauses from full PDF text, with RAG grounding.
 
-    This function retrieves similar historical clauses from the knowledge base
-    to provide context and evidence for the LLM analysis.
+    This approach is more accurate than regex-based splitting because:
+    - LLM understands context and clause boundaries
+    - Classification happens with full document context
+    - Preserves semantic relationships between clauses
 
     Args:
-        clauses_with_preds: List of classified clauses
+        full_pdf_text: Complete text from PDF
         source_doc: Source document filename
-        groq_api_key: Groq API key for LLM
+        gemini_api_key: Google Gemini API key
 
     Returns:
-        Markdown-formatted analysis with grounded insights
+        Tuple of (classification_results_markdown, analysis_markdown)
     """
-    client = Groq(api_key=groq_api_key)
+    # Configure Gemini API
+    genai.configure(api_key=gemini_api_key)
+    model = genai.GenerativeModel(GEMINI_MODEL)
 
-    # Limit to first 40 clauses to avoid token limits
-    limited_clauses = clauses_with_preds[:40]
+    # Retrieve similar documents from RAG for context
+    historical_context = ""
+    try:
+        stats = clause_store.get_statistics()
+        if stats['total_clauses'] > 0:
+            # Get similar past documents
+            similar_docs = clause_store.retrieve_similar_clauses(
+                query=full_pdf_text[:1000],  # Use first 1000 chars for similarity
+                top_k=3,
+                label_filter=None
+            )
 
-    # Count red flags
-    redflags = [c for c in clauses_with_preds if 'redflag' in c['predicted_class'].lower()]
+            if similar_docs:
+                historical_context = "\n\n--- HISTORICAL CONTEXT FROM KNOWLEDGE BASE ---\n"
+                historical_context += "Similar lease agreements found:\n"
+                for i, doc in enumerate(similar_docs, 1):
+                    historical_context += f"\n{i}. From {doc['metadata'].get('source_doc', 'Unknown')}:\n"
+                    historical_context += f"   {doc['text'][:200]}...\n"
+    except Exception as e:
+        print(f"⚠️ Could not retrieve historical context: {e}")
 
-    # For each red flag, find similar historical clauses (GROUNDING WITH RAG)
-    redflag_context = []
-    if redflags and clause_store.get_statistics()['total_clauses'] > 10:
-        print(f"🔍 Retrieving similar clauses for {len(redflags)} red flags...")
+    # Truncate PDF text if too long (keep under 4000 tokens ≈ 16000 chars)
+    pdf_text_truncated = full_pdf_text[:12000] if len(full_pdf_text) > 12000 else full_pdf_text
 
-        for rf in redflags[:5]:  # Limit to first 5 red flags
-            try:
-                similar = clause_store.retrieve_similar_clauses(
-                    query=rf['clause'],
-                    top_k=3,
-                    label_filter="redflag"  # Only get similar red flags
-                )
+    # Prompt for extraction and classification
+    extraction_prompt = f"""You are a legal expert analyzing a lease agreement. Your task is to:
 
-                if similar:
-                    redflag_context.append({
-                        "current_redflag": rf['clause'][:200],
-                        "similar_historical": [
-                            {
-                                "text": s['text'][:150],
-                                "source": s['metadata'].get('source_doc', 'Unknown'),
-                                "similarity": 1 - s['distance']  # Convert distance to similarity
-                            }
-                            for s in similar
-                        ]
-                    })
-            except Exception as e:
-                print(f"⚠️ Could not retrieve similar clauses: {e}")
+1. Extract and list ALL important clauses from this lease agreement
+2. Classify each clause into one of these categories:
+   - redflag (unfair or risky terms)
+   - rent_review_date
+   - term_of_payment
+   - notice_period
+   - lessor (landlord information)
+   - lessee (tenant information)
+   - start_date / end_date
+   - leased_space
+   - extension_period
+   - vat
+   - designated_use
+   - other (if none of the above apply)
 
-    # Build prompt with classified clauses
-    text_blocks = []
-    for item in limited_clauses:
-        clause_text = item['clause'][:200] + "..." if len(item['clause']) > 200 else item['clause']
-        text_blocks.append(
-            f"Clause: {clause_text}\n"
-            f"Label: {item['predicted_class']}\n"
-            f"Confidence: {item['confidence']:.2f}"
-        )
+3. For each clause, provide:
+   - The exact text of the clause
+   - Its classification
+   - A brief explanation (especially for red flags)
 
-    input_text = "\n\n".join(text_blocks)
+LEASE AGREEMENT TEXT:
+{pdf_text_truncated}
+{historical_context}
 
-    # Add historical context if available (THIS IS THE RAG GROUNDING)
-    evidence_text = ""
-    if redflag_context:
-        evidence_text = "\n\n--- HISTORICAL EVIDENCE FROM KNOWLEDGE BASE ---\n"
-        evidence_text += f"Found {len(redflag_context)} red flags with historical matches:\n\n"
+Please extract and classify clauses in the following markdown format:
 
-        for i, ctx in enumerate(redflag_context, 1):
-            evidence_text += f"\n{i}. Current Red Flag:\n"
-            evidence_text += f"   {ctx['current_redflag']}\n\n"
-            evidence_text += f"   Similar past cases ({len(ctx['similar_historical'])} found):\n"
-            for j, hist in enumerate(ctx['similar_historical'], 1):
-                evidence_text += f"   {j}. [{hist['source']}] {hist['text']} (Similarity: {hist['similarity']:.2f})\n"
+## Extracted Clauses
 
-    # Construct grounded prompt
-    prompt = f"""
-You are a legal assistant analyzing a lease agreement. Here are {len(limited_clauses)} classified clauses:
+### 1. [Classification]
+**Clause:** [exact text]
+**Explanation:** [brief explanation, especially for red flags]
 
-{input_text}
+### 2. [Classification]
+...
 
-IMPORTANT: There are {len(redflags)} clauses marked as potential red flags in the full document.
-{evidence_text}
+After listing ALL clauses, provide:
 
-Tasks:
-1. Summarize the key terms you can identify (Rent, Deposit, Duration, Parties, Use, etc.)
-2. List the red flag clauses and explain risks
-   - If historical evidence is provided above, use it to contextualize the risks
-   - Compare current clauses with similar historical patterns
-3. Give 2-3 recommendations for the tenant based on evidence
-4. Keep response under 500 words
+## Summary Analysis
+- Key terms (rent, deposit, duration, parties)
+- Total red flags found
+- Main concerns
+- Recommendations for tenant
 
-Format in markdown with clear sections.
-"""
+Please be thorough and extract ALL important clauses from the document. Use clear formatting with markdown."""
 
     try:
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=1000
+        print("🤖 Using Gemini to extract and classify clauses...")
+        response = model.generate_content(
+            extraction_prompt,
+            generation_config=genai.GenerationConfig(
+                temperature=0.2,  # Lower temperature for more consistent extraction
+                max_output_tokens=8000  # Increased from 2000 to allow full lease analysis
+            )
         )
 
-        return completion.choices[0].message.content
+        # Check if response was blocked or incomplete
+        if not response.text:
+            if hasattr(response, 'prompt_feedback'):
+                return f"⚠️ Response blocked: {response.prompt_feedback}", ""
+            return "⚠️ Empty response from Gemini", ""
+
+        llm_response = response.text
+
+        # Check if response was truncated
+        if hasattr(response, 'candidates') and len(response.candidates) > 0:
+            finish_reason = response.candidates[0].finish_reason
+            if finish_reason and 'MAX_TOKENS' in str(finish_reason):
+                llm_response += "\n\n⚠️ **Note:** Response was truncated due to length. Consider uploading a shorter document or processing in sections."
+
+        # Return both as classification results and analysis
+        return llm_response, llm_response
+
     except Exception as e:
-        return f"⚠️ Error generating analysis: {str(e)}"
+        error_msg = f"⚠️ Error during Gemini extraction: {str(e)}"
+        print(f"Full error: {e}")
+        return error_msg, error_msg
+
+# ================================================================
+# Conversational RAG Query Interface
+# ================================================================
+
+# System prompt for conversational RAG assistant
+CONVERSATIONAL_SYSTEM_PROMPT = """You are a helpful legal assistant specializing in lease agreements. Your role is to answer questions about lease clauses stored in a knowledge base.
+
+Guidelines:
+- Base your answers on the retrieved clause evidence provided
+- Be conversational and helpful
+- If the retrieved clauses don't fully answer the question, acknowledge this
+- Cite specific clause types and sources when relevant
+- For red flags, explain the risks clearly
+- Maintain context from previous conversation turns
+- If unsure, say so rather than making up information
+
+Remember: You're helping users understand lease agreements and identify potential issues."""
+
+
+def build_conversation_context(history: list, max_history: int = 5) -> str:
+    """
+    Convert Gradio history format to readable context string.
+
+    Args:
+        history: List of [user_msg, bot_msg] pairs from ChatInterface
+        max_history: Maximum number of past exchanges to include
+
+    Returns:
+        Formatted conversation history string
+    """
+    if not history:
+        return ""
+
+    # Limit to recent exchanges to avoid token overflow
+    recent_history = history[-max_history:]
+
+    context_parts = []
+    for item in recent_history:
+        # Handle different formats: [user, bot] or just messages
+        if isinstance(item, (list, tuple)) and len(item) >= 2:
+            user_msg = item[0]
+            bot_msg = item[1]
+            if user_msg:  # Only add if user message exists
+                context_parts.append(f"User: {user_msg}")
+            if bot_msg:  # Only add if bot message exists
+                context_parts.append(f"Assistant: {bot_msg}")
+        elif isinstance(item, dict):
+            # Handle dict format if that's what Gradio uses
+            if 'user' in item and item['user']:
+                context_parts.append(f"User: {item['user']}")
+            if 'assistant' in item and item['assistant']:
+                context_parts.append(f"Assistant: {item['assistant']}")
+
+    return "\n".join(context_parts)
+
+
+def format_retrieved_clauses(similar_clauses: list) -> str:
+    """
+    Format retrieved content (pages or clauses) for LLM context.
+
+    Args:
+        similar_clauses: List of clause/page dicts from retrieve_similar_clauses()
+
+    Returns:
+        Formatted string with content information
+    """
+    if not similar_clauses:
+        return "No relevant content found in the knowledge base."
+
+    formatted_parts = []
+    for i, item in enumerate(similar_clauses, 1):
+        similarity_score = 1 - item['distance']
+        metadata = item['metadata']
+
+        # Handle both old clause-based and new page-based storage
+        is_page = metadata.get('type') == 'pdf_page'
+
+        if is_page:
+            formatted_parts.append(
+                f"[Document {i}]\n"
+                f"Text: {item['text'][:500]}{'...' if len(item['text']) > 500 else ''}\n"
+                f"Source: {metadata.get('source_doc', 'Unknown')} (Page {metadata.get('page', 'N/A')})\n"
+                f"Relevance: {similarity_score:.2f}\n"
+            )
+        else:
+            # Old clause-based format (for backward compatibility)
+            formatted_parts.append(
+                f"[Clause {i}]\n"
+                f"Text: {item['text']}\n"
+                f"Type: {metadata.get('label', 'Unknown')}\n"
+                f"Source: {metadata.get('source_doc', 'Unknown')}\n"
+                f"Confidence: {metadata.get('confidence', 0):.2f}\n"
+                f"Relevance: {similarity_score:.2f}\n"
+            )
+
+    return "\n".join(formatted_parts)
+
+
+def get_kb_statistics_display() -> str:
+    """Generate markdown display of knowledge base statistics."""
+    try:
+        stats = clause_store.get_statistics()
+
+        # Count red flags (sample approach)
+        redflag_count = 0
+        try:
+            redflags = clause_store.get_clauses_by_label('redflag', limit=1000)
+            redflag_count = len(redflags) if redflags else 0
+        except:
+            pass
+
+        return f"""### 📊 Knowledge Base Statistics
+- **Total Clauses:** {stats['total_clauses']}
+- **Red Flags Detected:** {redflag_count}
+- **Status:** {'Ready for queries' if stats['total_clauses'] > 0 else 'Empty - process PDFs first'}
+
+*Ask me anything about your lease clauses!*
+"""
+    except Exception as e:
+        return f"### 📊 Knowledge Base Statistics\n*Unable to load statistics: {str(e)}*"
+
+
+def construct_conversational_prompt(
+    user_question: str,
+    conversation_history: str,
+    retrieved_clauses: str,
+    kb_stats: dict
+) -> str:
+    """Construct the full prompt for the LLM."""
+
+    prompt = f"""KNOWLEDGE BASE: {kb_stats['total_clauses']} clauses from processed lease agreements
+
+"""
+
+    if conversation_history:
+        prompt += f"""CONVERSATION HISTORY:
+{conversation_history}
+
+"""
+
+    prompt += f"""RETRIEVED RELEVANT CLAUSES:
+{retrieved_clauses}
+
+CURRENT QUESTION: {user_question}
+
+Please provide a helpful answer based on the retrieved clauses above. If the conversation history is relevant, maintain continuity with previous responses."""
+
+    return prompt
+
+
+def handle_conversational_query(
+    message: str,
+    history: list,
+    gemini_api_key: str,
+    top_k: int = 5
+) -> str:
+    """
+    Handle conversational queries about the lease clause knowledge base.
+
+    Args:
+        message: User's current question
+        history: List of [user_msg, assistant_msg] pairs (managed by ChatInterface)
+        gemini_api_key: Google Gemini API key
+        top_k: Number of similar clauses to retrieve
+
+    Returns:
+        Assistant's response as string
+    """
+    # Validation
+    if not gemini_api_key or gemini_api_key.strip() == "":
+        return "⚠️ Please provide a valid Gemini API key in the settings below."
+
+    # Check knowledge base
+    try:
+        stats = clause_store.get_statistics()
+        if stats['total_clauses'] < 3:
+            return ("📭 The knowledge base is empty or has too few clauses. "
+                    "Please process some PDF documents in the 'PDF Analysis' tab first.")
+    except Exception as e:
+        return f"⚠️ Error accessing knowledge base: {str(e)}"
+
+    # Retrieve relevant clauses
+    try:
+        similar_clauses = clause_store.retrieve_similar_clauses(
+            query=message,
+            top_k=int(top_k),
+            label_filter=None  # Search across ALL labels
+        )
+    except Exception as e:
+        return f"⚠️ Error retrieving clauses: {str(e)}"
+
+    if not similar_clauses:
+        return f"🔍 I couldn't find any clauses relevant to your question. The knowledge base contains {stats['total_clauses']} clauses. Try rephrasing or ask about a different topic."
+
+    # Build context
+    conversation_context = build_conversation_context(history)
+    context_text = format_retrieved_clauses(similar_clauses)
+
+    # Construct prompt
+    prompt = construct_conversational_prompt(
+        user_question=message,
+        conversation_history=conversation_context,
+        retrieved_clauses=context_text,
+        kb_stats=stats
+    )
+
+    # Call Gemini LLM
+    try:
+        genai.configure(api_key=gemini_api_key)
+        model = genai.GenerativeModel(GEMINI_MODEL)
+
+        # Combine system prompt with user prompt (Gemini doesn't have separate system messages)
+        full_prompt = f"""{CONVERSATIONAL_SYSTEM_PROMPT}
+
+---
+
+{prompt}"""
+
+        response = model.generate_content(
+            full_prompt,
+            generation_config=genai.GenerationConfig(
+                temperature=0.5,
+                max_output_tokens=2000  # Increased for detailed responses
+            )
+        )
+
+        # Add source information
+        response_text = response.text
+        sources = set([c['metadata'].get('source_doc', 'Unknown') for c in similar_clauses[:3]])
+        response_text += f"\n\n---\n📚 *Sources: {', '.join(sources)}*"
+
+        return response_text
+
+    except Exception as e:
+        return f"⚠️ Error generating response: {str(e)}\n\nPlease check your API key and try again."
+
 
 # ================================================================
 # Main Processing Pipeline (Enhanced with RAG)
 # ================================================================
-def process_lease_agreement(pdf_file, groq_api_key, progress=gr.Progress()):
+def process_lease_agreement(pdf_file, gemini_api_key, progress=gr.Progress()):
     """
-    Main pipeline: Extract → Classify → Store in RAG → Analyze with Grounding
+    NEW Pipeline: Extract Pages → Store in RAG → LLM Extract & Classify → Analyze
 
     Steps:
-    1. Extract text from PDF
-    2. Split into clauses
-    3. Classify each clause using fine-tuned ALBERT
-    4. Store clauses in RAG knowledge base
-    5. Retrieve relevant context for analysis
-    6. Generate grounded LLM analysis
+    1. Extract text from PDF by pages (preserves context)
+    2. Store full pages in RAG knowledge base
+    3. Use Gemini LLM to extract and classify clauses from full document
+    4. Generate analysis with RAG grounding
     """
 
     if pdf_file is None:
         return "❌ Please upload a PDF file", ""
 
-    if not groq_api_key or groq_api_key.strip() == "":
-        return "❌ Please provide a valid Groq API key", ""
+    if not gemini_api_key or gemini_api_key.strip() == "":
+        return "❌ Please provide a valid Gemini API key", ""
 
     try:
         # Handle file path - Gradio returns the file path
         pdf_path = pdf_file.name if hasattr(pdf_file, 'name') else pdf_file
 
-        # Step 1: Extract text from PDF
+        # Step 1: Extract text from PDF by pages
         progress(0.2, desc="Extracting text from PDF...")
-        pdf_text = extract_text_from_pdf(pdf_path)
+        pages = extract_text_by_pages(pdf_path)
 
-        if not pdf_text or len(pdf_text) < 10:
+        if not pages or len(pages) == 0:
             return "❌ Could not extract text from PDF. Please ensure it's a valid PDF with text content.", ""
 
-        # Step 2: Split into clauses
-        progress(0.3, desc="Splitting into clauses...")
-        clauses = split_into_clauses(pdf_text)
+        # Combine pages into full text for LLM analysis
+        full_pdf_text = "\n\n".join([f"--- Page {p['page']} ---\n{p['text']}" for p in pages])
 
-        # Step 3: Classify each clause
-        progress(0.4, desc=f"Classifying {len(clauses)} clauses...")
-        clauses_with_preds = []
+        if len(full_pdf_text) < 10:
+            return "❌ PDF appears to be empty or unreadable.", ""
 
-        for i, clause in enumerate(clauses):
-            result = classifier.classify(clause)
-            clauses_with_preds.append({
-                "clause": clause,
-                "predicted_class": result["predicted_class"],
-                "confidence": result["confidence"]
-            })
-
-            if i % 10 == 0:
-                progress((0.4 + 0.3 * i / len(clauses)), desc=f"Classifying clause {i+1}/{len(clauses)}...")
-
-        # Step 4: Store in RAG system (NEW - THE KEY ENHANCEMENT)
-        progress(0.7, desc="Storing clauses in knowledge base...")
+        # Step 2: Store pages in RAG system
+        progress(0.4, desc=f"Storing {len(pages)} pages in knowledge base...")
         timestamp = datetime.now().isoformat()
         source_doc = os.path.basename(pdf_path)
 
-        rag_clauses = []
-        for i, item in enumerate(clauses_with_preds):
-            rag_clauses.append({
-                "clause_id": f"{source_doc}_CL_{i:03d}",
-                "text": item["clause"],
-                "label": item["predicted_class"],
-                "confidence": item["confidence"],
-                "source_doc": source_doc,
-                "timestamp": timestamp
-            })
-
         try:
-            clause_store.add_clauses_batch(rag_clauses)
+            clause_store.add_pdf_pages(pages, source_doc, timestamp)
             rag_status = "✅ Yes"
+            total_in_kb = clause_store.get_statistics()['total_clauses']
         except Exception as e:
             print(f"⚠️ Error storing in RAG: {e}")
             rag_status = "⚠️ Error"
+            total_in_kb = 0
 
-        # Step 5: Generate classification results
-        progress(0.8, desc="Generating results...")
-        label_counts = Counter([c['predicted_class'] for c in clauses_with_preds])
+        # Step 3 & 4: Use Gemini to extract, classify, and analyze
+        progress(0.6, desc="Using Gemini to extract and classify clauses...")
+        classification_results, analysis_results = extract_and_analyze_with_llm(
+            full_pdf_text,
+            source_doc,
+            gemini_api_key
+        )
 
-        results_md = "## 📊 Document Statistics\n\n"
-        results_md += f"- **Total Clauses:** {len(clauses_with_preds)}\n"
-        results_md += f"- **Red Flags Found:** {label_counts.get('redflag', 0) + label_counts.get('redflags', 0)}\n"
-        results_md += f"- **Average Confidence:** {sum(c['confidence'] for c in clauses_with_preds) / len(clauses_with_preds):.2%}\n"
-        results_md += f"- **Stored in Knowledge Base:** {rag_status} ({clause_store.get_statistics()['total_clauses']} total clauses)\n\n"
+        # Generate summary statistics
+        progress(0.9, desc="Preparing results...")
+        results_md = f"""# 📄 {source_doc}
 
-        results_md += "### 🏷️ Top Label Types:\n"
-        for label, count in label_counts.most_common(5):
-            results_md += f"- **{label}**: {count}\n"
+## 📊 Document Statistics
 
-        results_md += "\n## 📋 Classification Results\n\n"
-        results_md += "| # | Clause Preview | Predicted Label | Confidence |\n"
-        results_md += "|---|----------------|-----------------|------------|\n"
+- **Total Pages:** {len(pages)}
+- **Total Characters:** {len(full_pdf_text):,}
+- **Stored in Knowledge Base:** {rag_status} ({total_in_kb} total documents/pages)
+- **Analysis Method:** LLM-based extraction with full context
+- **RAG Enhancement:** {'✅ Active' if total_in_kb > len(pages) else '⏳ First document (no historical context yet)'}
 
-        for i, item in enumerate(clauses_with_preds[:30], 1):  # Show first 30
-            clause_preview = item['clause'][:80] + "..." if len(item['clause']) > 80 else item['clause']
-            conf_emoji = "🟢" if item['confidence'] > 0.8 else "🟡" if item['confidence'] > 0.6 else "🔴"
-            results_md += f"| {i} | {clause_preview} | {item['predicted_class']} | {conf_emoji} {item['confidence']:.2f} |\n"
+---
 
-        if len(clauses_with_preds) > 30:
-            results_md += f"\n*Showing 30 of {len(clauses_with_preds)} clauses*\n"
-
-        # Step 6: Get RAG-enhanced LLM analysis
-        progress(0.9, desc="Analyzing with AI (RAG-enhanced)...")
-        llm_analysis = analyze_with_grounded_llm(clauses_with_preds, source_doc, groq_api_key)
+{classification_results}
+"""
 
         progress(1.0, desc="Complete!")
 
-        final_analysis = f"# 📑 AI-Powered Lease Analysis (RAG-Enhanced)\n\n{llm_analysis}"
+        final_analysis = f"# 📑 AI-Powered Lease Analysis (RAG-Enhanced)\n\n{analysis_results}"
 
         return results_md, final_analysis
 
@@ -267,66 +487,142 @@ def process_lease_agreement(pdf_file, groq_api_key, progress=gr.Progress()):
 # ================================================================
 # Gradio Interface
 # ================================================================
-with gr.Blocks(theme=gr.themes.Soft(), title="ClauseCraft") as demo:
+with gr.Blocks(title="ClauseCraft") as demo:
+
     gr.Markdown(f"# {APP_TITLE}\n\n{APP_DESCRIPTION}")
 
-    with gr.Row():
-        with gr.Column(scale=1):
-            pdf_input = gr.File(
-                label="📄 Upload Lease Agreement (PDF)",
-                file_types=[".pdf"]
-            )
+    with gr.Tabs():
+        # ===== TAB 1: Existing PDF Analysis =====
+        with gr.Tab("📄 PDF Analysis"):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    pdf_input = gr.File(
+                        label="📄 Upload Lease Agreement (PDF)",
+                        file_types=[".pdf"]
+                    )
 
-            api_key_input = gr.Textbox(
-                label="🔑 Groq API Key",
-                type="password",
-                value=GROQ_API_KEY,
-                placeholder="Enter your Groq API key"
-            )
+                    api_key_input = gr.Textbox(
+                        label="🔑 Gemini API Key",
+                        type="password",
+                        value=GEMINI_API_KEY,
+                        placeholder="Enter your Gemini API key"
+                    )
 
-            analyze_btn = gr.Button("🔍 Analyze Lease Agreement", variant="primary", size="lg")
+                    analyze_btn = gr.Button("🔍 Analyze Lease Agreement", variant="primary", size="lg")
+
+                    gr.Markdown(
+                        """
+                        ### 📌 How to use:
+                        1. Upload your lease agreement PDF
+                        2. Enter your Gemini API key ([Get one here](https://aistudio.google.com/app/apikey))
+                        3. Click "Analyze Lease Agreement"
+                        4. Review the LLM-extracted clauses and analysis
+
+                        ### 🆕 Enhanced with RAG & Gemini:
+                        - PDFs are stored page-by-page in the knowledge base
+                        - Gemini extracts and classifies clauses from full document context
+                        - Historical lease agreements provide context for better analysis
+                        - More accurate than regex-based splitting
+                        """
+                    )
+
+            with gr.Row():
+                with gr.Column(scale=1):
+                    classification_output = gr.Markdown(label="Classification Results")
+
+                with gr.Column(scale=1):
+                    analysis_output = gr.Markdown(label="AI Analysis")
+
+            analyze_btn.click(
+                fn=process_lease_agreement,
+                inputs=[pdf_input, api_key_input],
+                outputs=[classification_output, analysis_output]
+            )
 
             gr.Markdown(
                 """
-                ### 📌 How to use:
-                1. Upload your lease agreement PDF
-                2. Enter your Groq API key ([Get one here](https://console.groq.com))
-                3. Click "Analyze Lease Agreement"
-                4. Review the classification and AI analysis
+                ---
+                ### 🏷️ Clause Types Extracted by Gemini:
+                Red Flags • Rent Terms • Payment Terms • Notice Period • Lessor/Lessee •
+                Leased Space • Extension Period • VAT • Designated Use • Start/End Dates • and more...
 
-                ### 🆕 RAG Enhancement:
-                - Every processed clause is stored in the knowledge base
-                - Similar historical clauses provide context for analysis
-                - Red flags are compared against past risky clauses
+                ### 🔬 RAG System Status:
+                - **Analysis Method:** LLM-based extraction (Google Gemini)
+                - **Embedding Model:** sentence-transformers/all-MiniLM-L6-v2
+                - **Vector Database:** ChromaDB (local persistence)
+                - **Storage:** Page-by-page with full context
+                - **Knowledge Base:** Growing with each processed document
                 """
             )
 
-    with gr.Row():
-        with gr.Column(scale=1):
-            classification_output = gr.Markdown(label="Classification Results")
+        # ===== TAB 2: NEW - Conversational Query Interface =====
+        with gr.Tab("💬 Query Knowledge Base"):
+            gr.Markdown("""
+            ## Ask Questions About Your Lease Agreements
 
-        with gr.Column(scale=1):
-            analysis_output = gr.Markdown(label="AI Analysis")
+            Query the knowledge base containing all processed lease agreements (stored page-by-page).
+            The AI will retrieve relevant document sections and provide conversational, context-aware answers.
+            """)
 
-    analyze_btn.click(
-        fn=process_lease_agreement,
-        inputs=[pdf_input, api_key_input],
-        outputs=[classification_output, analysis_output]
-    )
+            # Knowledge Base Statistics
+            with gr.Row():
+                stats_display = gr.Markdown(value=get_kb_statistics_display())
 
-    gr.Markdown(
-        """
-        ---
-        ### 🏷️ Supported Label Types:
-        Start/End Dates • Rent Terms • Payment Terms • Red Flags • Lessor/Lessee •
-        Leased Space • Notice Period • Extension Period • VAT • Designated Use • and more...
+            # Main Chat Interface
+            chat_interface = gr.ChatInterface(
+    fn=handle_conversational_query,
+    chatbot=gr.Chatbot(
+        height=500,
+        render_markdown=True,
 
-        ### 🔬 RAG System Status:
-        - **Embedding Model:** sentence-transformers/all-MiniLM-L6-v2
-        - **Vector Database:** ChromaDB (local persistence)
-        - **Knowledge Base:** Growing with each processed document
-        """
-    )
+    ),
+    textbox=gr.Textbox(
+        placeholder="Ask me anything about lease clauses...",
+        container=False,
+        scale=7
+    ),
+    additional_inputs=[
+        gr.Textbox(
+            label="🔑 Gemini API Key",
+            type="password",
+            value=GEMINI_API_KEY,
+            placeholder="Enter your Gemini API key"
+        ),
+        gr.Slider(
+            label="Number of relevant documents to retrieve",
+            minimum=3,
+            maximum=10,
+            value=5,
+            step=1,
+            info="More documents = better context but slower responses"
+        )
+    ],
+ 
+)
+
+
+            # Example queries
+            gr.Examples(
+                examples=[
+                    "What are common red flags in lease agreements?",
+                    "Show me examples of unfair rent escalation clauses",
+                    "What should I look for in notice period clauses?",
+                    "Are there any concerning VAT-related clauses?",
+                    "What are typical lease extension terms?",
+                    "Summarize the most common lessor obligations"
+                ],
+                inputs=chat_interface.textbox,
+                label="💡 Example Questions"
+            )
+
+            gr.Markdown("""
+            ---
+            ### 💡 Tips:
+            - Ask follow-up questions - the assistant remembers conversation context
+            - Be specific about what you want to know
+            - Questions can be about specific clause types or general patterns
+            - The system searches across all stored lease clauses
+            """)
 
 # ================================================================
 # Launch App
@@ -340,5 +636,6 @@ if __name__ == "__main__":
         server_name=SERVER_NAME,
         server_port=SERVER_PORT,
         share=False,
+        theme=gr.themes.Soft(),
         debug=True
     )
