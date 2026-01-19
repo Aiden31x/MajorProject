@@ -4,6 +4,7 @@ Handles PDF text extraction and clause segmentation
 """
 import re
 import PyPDF2
+from io import BytesIO
 
 
 def extract_text_from_pdf(pdf_file) -> str:
@@ -11,7 +12,7 @@ def extract_text_from_pdf(pdf_file) -> str:
     Extract text from uploaded PDF file.
 
     Args:
-        pdf_file: Either a file path (string) or file object from Gradio
+        pdf_file: Either a file path (string), bytes, or file object
 
     Returns:
         Extracted text as string
@@ -21,13 +22,17 @@ def extract_text_from_pdf(pdf_file) -> str:
     """
     text = ""
 
-    # Handle both file path (string) and file object
+    # Handle file path (string)
     if isinstance(pdf_file, str):
-        # It's a file path
         with open(pdf_file, 'rb') as f:
             reader = PyPDF2.PdfReader(f)
             for page in reader.pages:
                 text += page.extract_text() + "\n"
+    # Handle bytes
+    elif isinstance(pdf_file, bytes):
+        reader = PyPDF2.PdfReader(BytesIO(pdf_file))
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
     else:
         # It's a file object
         reader = PyPDF2.PdfReader(pdf_file)
@@ -42,7 +47,7 @@ def extract_text_by_pages(pdf_file) -> list[dict]:
     Extract text from PDF, preserving page boundaries for better RAG chunking.
 
     Args:
-        pdf_file: Either a file path (string) or file object from Gradio
+        pdf_file: Either a file path (string), bytes, or file object
 
     Returns:
         List of dictionaries with page number and text:
@@ -53,9 +58,8 @@ def extract_text_by_pages(pdf_file) -> list[dict]:
     """
     pages = []
 
-    # Handle both file path (string) and file object
+    # Handle file path (string)
     if isinstance(pdf_file, str):
-        # It's a file path
         with open(pdf_file, 'rb') as f:
             reader = PyPDF2.PdfReader(f)
             for i, page in enumerate(reader.pages, start=1):
@@ -65,6 +69,16 @@ def extract_text_by_pages(pdf_file) -> list[dict]:
                         "page": i,
                         "text": page_text.strip()
                     })
+    # Handle bytes
+    elif isinstance(pdf_file, bytes):
+        reader = PyPDF2.PdfReader(BytesIO(pdf_file))
+        for i, page in enumerate(reader.pages, start=1):
+            page_text = page.extract_text()
+            if page_text.strip():  # Only add non-empty pages
+                pages.append({
+                    "page": i,
+                    "text": page_text.strip()
+                })
     else:
         # It's a file object
         reader = PyPDF2.PdfReader(pdf_file)

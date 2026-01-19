@@ -276,18 +276,20 @@ def extract_analyze_and_score_risks(
     source_doc: str,
     gemini_api_key: str,
     clause_store,  # ClauseStore instance
-    timestamp: str = ""
+    timestamp: str = "",
+    pdf_pages: List[Dict] = None  # NEW parameter
 ) -> Tuple[str, str, Dict[str, Any]]:
     """
     Complete 3-step pipeline: Classification → Analysis → Risk Scoring.
-    
+
     Args:
         full_pdf_text: Complete text from PDF
         source_doc: Source document filename
         gemini_api_key: Google Gemini API key
         clause_store: ClauseStore instance for RAG context
         timestamp: ISO timestamp for the assessment
-    
+        pdf_pages: Optional list of page dicts with 'page_number' and 'text' for position extraction
+
     Returns:
         Tuple of (classification_results, analysis_results, risk_assessment_dict)
     """
@@ -337,7 +339,8 @@ def extract_analyze_and_score_risks(
         risk_assessment = risk_agent.score_lease_agreement(
             full_pdf_text=full_pdf_text,
             historical_context=historical_context,
-            timestamp=timestamp
+            timestamp=timestamp,
+            pdf_pages=pdf_pages  # NEW: Pass pages for position extraction
         )
         
         # Convert to dict for JSON serialization

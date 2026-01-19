@@ -48,12 +48,20 @@ export default function HomePage() {
                 <p className="text-sm text-muted-foreground">AI-Powered Lease Agreement Analyzer</p>
               </div>
             </div>
-            <Link href="/chat">
-              <Button variant="outline" className="gap-2">
-                <MessageSquare className="w-4 h-4" />
-                Query Knowledge Base
-              </Button>
-            </Link>
+            <div className="flex gap-2">
+              <Link href="/document">
+                <Button variant="default" className="gap-2">
+                  <FileText className="w-4 h-4" />
+                  Document Viewer
+                </Button>
+              </Link>
+              <Link href="/chat">
+                <Button variant="outline" className="gap-2">
+                  <MessageSquare className="w-4 h-4" />
+                  Knowledge Base
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </header>

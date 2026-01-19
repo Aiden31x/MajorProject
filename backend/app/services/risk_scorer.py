@@ -84,15 +84,28 @@ class RiskScoringAgent:
         else:
             return "High"
     
-    def _build_scoring_prompt(self, full_pdf_text: str, historical_context: str) -> str:
+    def _build_scoring_prompt(self, full_pdf_text: str, historical_context: str, pdf_pages: List[Dict] = None) -> str:
         """Construct the comprehensive risk scoring prompt"""
-        
+
+        # Calculate page boundaries for position extraction
+        page_info = ""
+        if pdf_pages:
+            page_info = "\n**PAGE BOUNDARIES (for position extraction):**\n"
+            current_pos = 0
+            for page in pdf_pages[:min(10, len(pdf_pages))]:  # Show first 10 pages as examples
+                page_text = page.get('text', '')
+                end_pos = current_pos + len(page_text)
+                page_info += f"Page {page.get('page_number', 0)}: chars {current_pos}-{end_pos}\n"
+                current_pos = end_pos
+            page_info += "\n"
+
         prompt = f"""You are a legal risk assessment expert analyzing a lease agreement. Provide a comprehensive multi-dimensional risk analysis.
 
 **LEASE AGREEMENT TEXT:**
 {full_pdf_text}
 
 {historical_context}
+{page_info}
 
 **YOUR TASK:**
 Analyze this lease agreement across 5 risk dimensions and provide a structured JSON response.
@@ -144,6 +157,9 @@ Return a JSON object with this EXACT structure (no markdown, no explanation, jus
     "problematic_clauses": [
       {{
         "clause_text": "Brief clause reference (max 100 chars)",
+        "page_number": <integer page number>,
+        "start_char": <integer char position in full text>,
+        "end_char": <integer char position in full text>,
         "severity": <0-100>,
         "confidence": <0-1>,
         "risk_explanation": "Brief explanation (max 150 chars)",
@@ -186,7 +202,19 @@ Return a JSON object with this EXACT structure (no markdown, no explanation, jus
 - All scores: numbers 0-100
 - All confidence values: 0-1
 - Strategic score is always 0 (qualitative-only dimension)
-- Be concise - the response MUST be valid JSON under 10000 characters total"""
+- Be concise - the response MUST be valid JSON under 10000 characters total
+
+**POSITION EXTRACTION REQUIREMENTS:**
+For EVERY problematic clause, you MUST include page_number in the JSON. This is MANDATORY.
+
+Set start_char and end_char to -1 (we will search for exact positions later), but page_number is REQUIRED.
+
+If you're unsure of the page number, estimate based on where in the document the clause appears:
+- Early in document → page_number between 1-8
+- Middle of document → page_number between 9-16
+- Late in document → page_number between 17-24
+
+DO NOT leave page_number as -1. Every clause must have a page number estimate."""
         
         return prompt
     
@@ -307,6 +335,20 @@ Return a JSON object with this EXACT structure (no markdown, no explanation, jus
                 if "problematic_clauses" not in data[dim]:
                     data[dim]["problematic_clauses"] = []
 
+                # Validate optional position fields in problematic_clauses
+                for clause in data[dim].get("problematic_clauses", []):
+                    clause['page_number'] = clause.get('page_number', -1)
+                    clause['start_char'] = clause.get('start_char', -1)
+                    clause['end_char'] = clause.get('end_char', -1)
+
+                    # Ensure valid ranges
+                    if not isinstance(clause['page_number'], int) or clause['page_number'] < -1:
+                        clause['page_number'] = -1
+                    if not isinstance(clause['start_char'], int) or clause['start_char'] < -1:
+                        clause['start_char'] = -1
+                    if not isinstance(clause['end_char'], int) or clause['end_char'] < -1:
+                        clause['end_char'] = -1
+
         # Fill in missing aggregation fields
         if "top_risks" not in data:
             data["top_risks"] = ["Risk analysis incomplete"]
@@ -411,21 +453,23 @@ Return a JSON object with this EXACT structure (no markdown, no explanation, jus
         self,
         full_pdf_text: str,
         historical_context: str = "",
-        timestamp: str = ""
+        timestamp: str = "",
+        pdf_pages: List[Dict] = None
     ) -> RiskAssessment:
         """
         Score a lease agreement across 5 dimensions.
-        
+
         Args:
             full_pdf_text: Complete text from the PDF
             historical_context: Optional historical context from RAG
             timestamp: ISO timestamp for the assessment
-        
+            pdf_pages: Optional list of page dicts with 'page_number' and 'text' for position extraction
+
         Returns:
             RiskAssessment object with complete analysis
         """
         # Build prompt
-        prompt = self._build_scoring_prompt(full_pdf_text, historical_context)
+        prompt = self._build_scoring_prompt(full_pdf_text, historical_context, pdf_pages)
         
         # Call LLM with retry mechanism
         data = self._call_llm_with_retry(prompt)
