@@ -168,7 +168,7 @@ export default function ChatPage() {
                         <ChatInterface
                             onSendMessage={handleSendMessage}
                             isLoading={isLoading}
-                            disabled={!apiKey}
+                            disabled={false}
                         />
 
                         {/* Example Queries */}

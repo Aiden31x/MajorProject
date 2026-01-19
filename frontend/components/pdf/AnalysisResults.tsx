@@ -17,7 +17,12 @@ export function AnalysisResults({ title, content }: AnalysisResultsProps) {
     return (
         <Card className="h-full">
             <CardHeader>
-                <CardTitle>{title}</CardTitle>
+                <CardTitle className="flex items-center justify-between">
+                    <span>{title}</span>
+                    <span className="text-xs font-normal text-muted-foreground">
+                        {content.length.toLocaleString()} characters
+                    </span>
+                </CardTitle>
             </CardHeader>
             <CardContent>
                 <ScrollArea className="h-[600px] pr-4">

@@ -169,8 +169,13 @@ export default function HomePage() {
           <div className="space-y-6">
             {/* Results Header */}
             <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold">Analysis Results</h2>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-2xl font-bold">Analysis Results</h2>
+                  <Badge variant="secondary" className="gap-1">
+                    💾 Saved - persists across navigation
+                  </Badge>
+                </div>
                 <p className="text-muted-foreground">
                   {result.source_document} • {result.pages_processed} pages •{' '}
                   {result.total_characters.toLocaleString()} characters

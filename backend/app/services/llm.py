@@ -203,7 +203,7 @@ Provide honest, balanced analysis - highlight both favorable and unfavorable ter
             classification_prompt,
             generation_config=genai.GenerationConfig(
                 temperature=0.2,  # Lower temperature for consistent classification
-                max_output_tokens=8000
+                max_output_tokens=16384  # Increased significantly for complete classification
             )
         )
 
@@ -214,11 +214,15 @@ Provide honest, balanced analysis - highlight both favorable and unfavorable ter
 
         classification_results = classification_response.text
 
-        # Check if classification was truncated
+        # Check if classification was truncated - improved detection
         if hasattr(classification_response, 'candidates') and len(classification_response.candidates) > 0:
-            finish_reason = classification_response.candidates[0].finish_reason
-            if finish_reason and 'MAX_TOKENS' in str(finish_reason):
-                classification_results += "\n\n⚠️ **Note:** Response was truncated due to length."
+            finish_reason = str(classification_response.candidates[0].finish_reason)
+            print(f"📊 Classification finish reason: {finish_reason}")
+            print(f"📏 Classification response length: {len(classification_results)} characters")
+
+            # Check for any kind of truncation
+            if 'MAX_TOKENS' in finish_reason or 'LENGTH' in finish_reason or finish_reason == 'MAX_TOKENS':
+                classification_results += "\n\n⚠️ **Note:** Response was truncated due to length. Consider processing a shorter document or contact support."
 
         # Step 2: Get AI analysis
         print("🤖 Step 2/2: Generating AI analysis...")
@@ -226,7 +230,7 @@ Provide honest, balanced analysis - highlight both favorable and unfavorable ter
             analysis_prompt,
             generation_config=genai.GenerationConfig(
                 temperature=0.4,  # Slightly higher for more nuanced analysis
-                max_output_tokens=6000
+                max_output_tokens=8192  # Increased for complete analysis
             )
         )
 
@@ -238,18 +242,32 @@ Provide honest, balanced analysis - highlight both favorable and unfavorable ter
         else:
             analysis_results = analysis_response.text
 
-            # Check if analysis was truncated
+            # Check if analysis was truncated - improved detection
             if hasattr(analysis_response, 'candidates') and len(analysis_response.candidates) > 0:
-                finish_reason = analysis_response.candidates[0].finish_reason
-                if finish_reason and 'MAX_TOKENS' in str(finish_reason):
+                finish_reason = str(analysis_response.candidates[0].finish_reason)
+                print(f"📊 Analysis finish reason: {finish_reason}")
+                print(f"📏 Analysis response length: {len(analysis_results)} characters")
+
+                if 'MAX_TOKENS' in finish_reason or 'LENGTH' in finish_reason or finish_reason == 'MAX_TOKENS':
                     analysis_results += "\n\n⚠️ **Note:** Analysis was truncated due to length."
 
         print("✅ Classification and analysis complete!")
+        print(f"📊 Final classification length: {len(classification_results)} chars")
+        print(f"📊 Final analysis length: {len(analysis_results)} chars")
+
+        # Safety check - warn if responses seem too short
+        if len(classification_results) < 500:
+            print("⚠️ WARNING: Classification results seem unusually short!")
+        if len(analysis_results) < 500:
+            print("⚠️ WARNING: Analysis results seem unusually short!")
+
         return classification_results, analysis_results
 
     except Exception as e:
         error_msg = f"⚠️ Error during Gemini processing: {str(e)}"
-        print(f"Full error: {e}")
+        print(f"❌ Full error: {e}")
+        import traceback
+        traceback.print_exc()
         return error_msg, error_msg
 
 
