@@ -7,6 +7,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { PDFUploader } from '@/components/pdf/PDFUploader';
 import { AnalysisResults } from '@/components/pdf/AnalysisResults';
+import { RiskScoreDisplay } from '@/components/pdf/RiskScoreDisplay';
 import { usePDFAnalysis } from '@/lib/hooks/usePDFAnalysis';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,16 +15,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { FileText, MessageSquare, Sparkles, AlertCircle } from 'lucide-react';
 
 export default function HomePage() {
   const [file, setFile] = useState<File | null>(null);
   const [apiKey, setApiKey] = useState('');
+  const [enableRiskScoring, setEnableRiskScoring] = useState(true);
   const { isAnalyzing, progress, error, result, analyze, reset } = usePDFAnalysis();
 
   const handleAnalyze = async () => {
     if (file) {
-      await analyze(file, apiKey || ''); // Use empty string if no API key provided (backend will use its own)
+      await analyze(file, apiKey || '', enableRiskScoring); // Use empty string if no API key provided (backend will use its own)
     }
   };
 
@@ -111,6 +114,26 @@ export default function HomePage() {
                       </a>
                       {' '}or leave empty to use server's configured key
                     </p>
+                  </div>
+
+                  <div className="flex items-center space-x-2 pt-2 border-t">
+                    <Checkbox
+                      id="risk-scoring"
+                      checked={enableRiskScoring}
+                      onCheckedChange={(checked: boolean) => setEnableRiskScoring(checked)}
+                      disabled={isAnalyzing}
+                    />
+                    <div className="space-y-0.5">
+                      <label
+                        htmlFor="risk-scoring"
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      >
+                        🎯 Enable Risk Scoring
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        Comprehensive 5-dimensional risk assessment (+15-30s processing time)
+                      </p>
+                    </div>
                   </div>
 
                   <Button
@@ -209,6 +232,14 @@ export default function HomePage() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Risk Assessment (if available) */}
+            {result.risk_assessment && (
+              <div>
+                <h2 className="text-2xl font-bold mb-4">🎯 Risk Assessment</h2>
+                <RiskScoreDisplay riskAssessment={result.risk_assessment} />
+              </div>
+            )}
 
             {/* Results */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

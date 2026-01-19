@@ -10,7 +10,7 @@ interface UsePDFAnalysisReturn {
     progress: number;
     error: string | null;
     result: PDFAnalysisResult | null;
-    analyze: (file: File, apiKey: string) => Promise<void>;
+    analyze: (file: File, apiKey: string, enableRiskScoring?: boolean) => Promise<void>;
     reset: () => void;
 }
 
@@ -46,7 +46,7 @@ export function usePDFAnalysis(): UsePDFAnalysisReturn {
         }
     }, [result]);
 
-    const analyze = async (file: File, apiKey: string) => {
+    const analyze = async (file: File, apiKey: string, enableRiskScoring: boolean = true) => {
         setIsAnalyzing(true);
         setProgress(0);
         setError(null);
@@ -58,7 +58,7 @@ export function usePDFAnalysis(): UsePDFAnalysisReturn {
                 setProgress((prev) => Math.min(prev + 10, 90));
             }, 500);
 
-            const analysisResult = await analyzePDF(file, apiKey);
+            const analysisResult = await analyzePDF(file, apiKey, enableRiskScoring);
 
             clearInterval(progressInterval);
             setProgress(100);
@@ -92,3 +92,4 @@ export function usePDFAnalysis(): UsePDFAnalysisReturn {
         reset,
     };
 }
+

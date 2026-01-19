@@ -6,18 +6,21 @@ import { PDFAnalysisResult } from '@/types/pdf';
 
 export async function analyzePDF(
     file: File,
-    geminiApiKey: string
+    geminiApiKey: string,
+    enableRiskScoring: boolean = true
 ): Promise<PDFAnalysisResult> {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('gemini_api_key', geminiApiKey);
+    formData.append('enable_risk_scoring', String(enableRiskScoring));
 
     const response = await apiClient.post<PDFAnalysisResult>('/api/pdf/analyze', formData, {
         headers: {
             'Content-Type': 'multipart/form-data',
         },
-        timeout: 300000, // 5 minutes for PDF analysis (2 LLM calls: classification + analysis)
+        timeout: 300000, // 5 minutes for PDF analysis (up to 3 LLM calls with risk scoring)
     });
 
     return response.data;
 }
+

@@ -271,6 +271,91 @@ Provide honest, balanced analysis - highlight both favorable and unfavorable ter
         return error_msg, error_msg
 
 
+def extract_analyze_and_score_risks(
+    full_pdf_text: str,
+    source_doc: str,
+    gemini_api_key: str,
+    clause_store,  # ClauseStore instance
+    timestamp: str = ""
+) -> Tuple[str, str, Dict[str, Any]]:
+    """
+    Complete 3-step pipeline: Classification → Analysis → Risk Scoring.
+    
+    Args:
+        full_pdf_text: Complete text from PDF
+        source_doc: Source document filename
+        gemini_api_key: Google Gemini API key
+        clause_store: ClauseStore instance for RAG context
+        timestamp: ISO timestamp for the assessment
+    
+    Returns:
+        Tuple of (classification_results, analysis_results, risk_assessment_dict)
+    """
+    from app.services.risk_scorer import RiskScoringAgent
+    
+    print("🚀 Starting 3-step pipeline: Classification → Analysis → Risk Scoring")
+    
+    # Steps 1-2: Classification and Analysis (existing function)
+    classification_results, analysis_results = extract_and_analyze_with_llm(
+        full_pdf_text,
+        source_doc,
+        gemini_api_key,
+        clause_store
+    )
+    
+    # Step 3: Risk Scoring
+    try:
+        # Retrieve historical context from RAG for risk calibration
+        historical_context = ""
+        try:
+            stats = clause_store.get_statistics()
+            if stats['total_clauses'] > 0:
+                # Get similar past documents
+                similar_docs = clause_store.retrieve_similar_clauses(
+                    query=full_pdf_text[:1000],
+                    top_k=3,
+                    label_filter=None
+                )
+                
+                if similar_docs:
+                    historical_context = "\n\n--- HISTORICAL RISK CONTEXT FROM KNOWLEDGE BASE ---\n"
+                    historical_context += "Similar lease agreements found for risk calibration:\n"
+                    for i, doc in enumerate(similar_docs, 1):
+                        metadata = doc['metadata']
+                        # Check if this document has risk scores
+                        if metadata.get('overall_risk_score'):
+                            historical_context += f"\n{i}. From {metadata.get('source_doc', 'Unknown')}:\n"
+                            historical_context += f"   Overall Risk: {metadata.get('overall_risk_score', 'N/A')} ({metadata.get('overall_risk_severity', 'N/A')})\n"
+                            historical_context += f"   Financial: {metadata.get('financial_risk_score', 'N/A')}, Legal: {metadata.get('legal_risk_score', 'N/A')}\n"
+        except Exception as e:
+            print(f"⚠️ Could not retrieve historical risk context: {e}")
+        
+        # Initialize risk scoring agent
+        risk_agent = RiskScoringAgent(gemini_api_key)
+        
+        # Score the lease agreement
+        risk_assessment = risk_agent.score_lease_agreement(
+            full_pdf_text=full_pdf_text,
+            historical_context=historical_context,
+            timestamp=timestamp
+        )
+        
+        # Convert to dict for JSON serialization
+        risk_assessment_dict = RiskScoringAgent.to_dict(risk_assessment)
+        
+        print("✅ 3-step pipeline complete!")
+        return classification_results, analysis_results, risk_assessment_dict
+        
+    except Exception as e:
+        error_msg = f"⚠️ Error during risk scoring: {str(e)}"
+        print(f"❌ Risk scoring error: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Return empty risk assessment on error (graceful degradation)
+        return classification_results, analysis_results, {}
+
+
 def build_conversation_context(history: List[Tuple[str, str]], max_history: int = 5) -> str:
     """
     Convert history format to readable context string.

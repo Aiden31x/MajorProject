@@ -343,6 +343,142 @@ class ClauseStore:
             "total_clauses": self.collection.count(),
             "collection_name": self.collection.name
         }
+    
+    def add_pdf_pages_with_risks(
+        self,
+        pages: List[dict],
+        source_doc: str,
+        timestamp: str,
+        risk_assessment: Optional[Dict] = None
+    ) -> List[str]:
+        """
+        Add PDF pages to the knowledge base with risk metadata.
+        
+        Args:
+            pages: List of page dictionaries with "page" and "text" keys
+            source_doc: Source PDF filename
+            timestamp: ISO timestamp when PDF was processed
+            risk_assessment: Optional risk assessment dictionary with scores
+        
+        Returns:
+            List of page IDs
+        """
+        if not pages:
+            return []
+        
+        page_ids = [f"{source_doc}_PAGE_{p['page']:03d}" for p in pages]
+        texts = [p["text"] for p in pages]
+        
+        # Batch encode for efficiency
+        print(f"🔄 Generating embeddings for {len(pages)} pages from {source_doc}...")
+        embeddings = self.embedding_model.encode(
+            texts,
+            convert_to_tensor=False,
+            show_progress_bar=True
+        ).tolist()
+        
+        # Build metadata with risk scores if available
+        metadatas = []
+        for p in pages:
+            metadata = {
+                "page": p["page"],
+                "source_doc": source_doc,
+                "timestamp": timestamp,
+                "type": "pdf_page"
+            }
+            
+            # Add risk scores if provided
+            if risk_assessment:
+                metadata["overall_risk_score"] = risk_assessment.get("overall_score", 0.0)
+                metadata["overall_risk_severity"] = risk_assessment.get("overall_severity", "Unknown")
+                
+                # Add dimensional scores
+                if "financial" in risk_assessment:
+                    metadata["financial_risk_score"] = risk_assessment["financial"].get("score", 0.0)
+                if "legal_compliance" in risk_assessment:
+                    metadata["legal_risk_score"] = risk_assessment["legal_compliance"].get("score", 0.0)
+                if "operational" in risk_assessment:
+                    metadata["operational_risk_score"] = risk_assessment["operational"].get("score", 0.0)
+                if "timeline" in risk_assessment:
+                    metadata["timeline_risk_score"] = risk_assessment["timeline"].get("score", 0.0)
+                if "strategic_reputational" in risk_assessment:
+                    metadata["strategic_risk_score"] = risk_assessment["strategic_reputational"].get("score", 0.0)
+            
+            metadatas.append(metadata)
+        
+        # Batch insert
+        print(f"💾 Storing {len(pages)} pages with risk metadata in ChromaDB...")
+        self.collection.add(
+            ids=page_ids,
+            embeddings=embeddings,
+            documents=texts,
+            metadatas=metadatas
+        )
+        
+        print(f"✅ Successfully stored {len(pages)} pages from {source_doc} with risk data!")
+        return page_ids
+    
+    def get_risk_statistics(self) -> Dict:
+        """
+        Get aggregated risk statistics from the knowledge base.
+        
+        Returns:
+            Dictionary with:
+                - total_documents: Total number of documents with risk scores
+                - average_overall_risk: Average overall risk score
+                - high_risk_count: Number of high-risk documents
+                - risk_distribution: Dict with Low/Medium/High counts
+        """
+        # Get all metadata from pages with risk scores
+        all_data = self.collection.get(
+            where={"type": "pdf_page"},
+            include=["metadatas"]
+        )
+        
+        if not all_data['metadatas']:
+            return {
+                "total_documents": 0,
+                "average_overall_risk": 0.0,
+                "high_risk_count": 0,
+                "risk_distribution": {"Low": 0, "Medium": 0, "High": 0}
+            }
+        
+        # Group by source document to avoid counting pages multiple times
+        doc_risks = {}
+        for metadata in all_data['metadatas']:
+            if metadata.get('overall_risk_score') is not None:
+                source = metadata.get('source_doc', 'Unknown')
+                if source not in doc_risks:
+                    doc_risks[source] = {
+                        'score': metadata.get('overall_risk_score', 0),
+                        'severity': metadata.get('overall_risk_severity', 'Unknown')
+                    }
+        
+        if not doc_risks:
+            return {
+                "total_documents": 0,
+                "average_overall_risk": 0.0,
+                "high_risk_count": 0,
+                "risk_distribution": {"Low": 0, "Medium": 0, "High": 0}
+            }
+        
+        # Calculate statistics
+        total_docs = len(doc_risks)
+        avg_risk = sum(d['score'] for d in doc_risks.values()) / total_docs
+        high_risk_count = sum(1 for d in doc_risks.values() if d['severity'] == 'High')
+        
+        distribution = {"Low": 0, "Medium": 0, "High": 0}
+        for doc_data in doc_risks.values():
+            severity = doc_data.get('severity', 'Unknown')
+            if severity in distribution:
+                distribution[severity] += 1
+        
+        return {
+            "total_documents": total_docs,
+            "average_overall_risk": round(avg_risk, 1),
+            "high_risk_count": high_risk_count,
+            "risk_distribution": distribution
+        }
 
     def clear_all(self):
         """
@@ -353,3 +489,4 @@ class ClauseStore:
         self.client.delete_collection("lease_clauses")
         self.collection = self._get_or_create_collection()
         print("🗑️ All clauses cleared from knowledge base")
+
