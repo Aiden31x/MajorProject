@@ -14,6 +14,6 @@ class ChatHistoryItem(BaseModel):
 class ChatMessage(BaseModel):
     """Chat query request"""
     message: str = Field(..., description="User's question about lease agreements")
-    gemini_api_key: str = Field(..., description="Google Gemini API key for LLM access")
+    gemini_api_key: Optional[str] = Field(None, description="Google Gemini API key for LLM access (optional, uses server key if not provided)")
     top_k: int = Field(default=5, ge=3, le=10, description="Number of similar documents to retrieve")
     history: List[ChatHistoryItem] = Field(default=[], description="Conversation history")

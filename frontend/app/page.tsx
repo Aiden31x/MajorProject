@@ -22,8 +22,8 @@ export default function HomePage() {
   const { isAnalyzing, progress, error, result, analyze, reset } = usePDFAnalysis();
 
   const handleAnalyze = async () => {
-    if (file && apiKey) {
-      await analyze(file, apiKey);
+    if (file) {
+      await analyze(file, apiKey || ''); // Use empty string if no API key provided (backend will use its own)
     }
   };
 
@@ -84,23 +84,23 @@ export default function HomePage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Configuration</CardTitle>
-                  <CardDescription>Enter your Gemini API key to analyze the PDF</CardDescription>
+                  <CardDescription>Gemini API key is optional (server uses configured key by default)</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
                     <label htmlFor="api-key" className="text-sm font-medium block mb-2">
-                      🔑 Gemini API Key
+                      🔑 Gemini API Key <span className="text-muted-foreground font-normal">(Optional)</span>
                     </label>
                     <Input
                       id="api-key"
                       type="password"
-                      placeholder="Enter your Gemini API key"
+                      placeholder="Leave empty to use server's API key"
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       disabled={isAnalyzing}
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                      Get your API key from{' '}
+                      Use your own API key from{' '}
                       <a
                         href="https://aistudio.google.com/app/apikey"
                         target="_blank"
@@ -109,12 +109,13 @@ export default function HomePage() {
                       >
                         Google AI Studio
                       </a>
+                      {' '}or leave empty to use server's configured key
                     </p>
                   </div>
 
                   <Button
                     onClick={handleAnalyze}
-                    disabled={!file || !apiKey || isAnalyzing}
+                    disabled={!file || isAnalyzing}
                     className="w-full"
                     size="lg"
                   >

@@ -14,7 +14,6 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, MessageSquare, AlertCircle, Sparkles } from 'lucide-react';
 
 export default function ChatPage() {
@@ -23,9 +22,7 @@ export default function ChatPage() {
     const { messages, isLoading, error, sendMessage, clearMessages } = useChat();
 
     const handleSendMessage = async (message: string) => {
-        if (apiKey) {
-            await sendMessage(message, apiKey, topK);
-        }
+        await sendMessage(message, apiKey || '', topK); // Use empty string if no API key provided (backend will use its own)
     };
 
     const exampleQueries = [
@@ -81,20 +78,31 @@ export default function ChatPage() {
                         <Card>
                             <CardHeader>
                                 <CardTitle>Configuration</CardTitle>
-                                <CardDescription>Set up your API key and retrieval parameters</CardDescription>
+                                <CardDescription>API key is optional (server uses configured key by default)</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div>
                                     <label htmlFor="chat-api-key" className="text-sm font-medium block mb-2">
-                                        🔑 Gemini API Key
+                                        🔑 Gemini API Key <span className="text-muted-foreground font-normal">(Optional)</span>
                                     </label>
                                     <Input
                                         id="chat-api-key"
                                         type="password"
-                                        placeholder="Enter your Gemini API key"
+                                        placeholder="Leave empty to use server's API key"
                                         value={apiKey}
                                         onChange={(e) => setApiKey(e.target.value)}
                                     />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Leave empty to use server's configured key or provide your own from{' '}
+                                        <a
+                                            href="https://aistudio.google.com/app/apikey"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-primary hover:underline"
+                                        >
+                                            Google AI Studio
+                                        </a>
+                                    </p>
                                 </div>
 
                                 <div>

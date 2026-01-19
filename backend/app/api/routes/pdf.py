@@ -4,6 +4,7 @@ PDF Analysis Endpoints
 import os
 import tempfile
 from datetime import datetime
+from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 
 from app.models.responses import PDFAnalysisResponse
@@ -11,6 +12,7 @@ from app.services.pdf_utils import extract_text_by_pages
 from app.services.llm import extract_and_analyze_with_llm
 from app.services.rag import ClauseStore
 from app.api.deps import get_clause_store
+from app.config import GEMINI_API_KEY
 
 router = APIRouter(prefix="/api/pdf", tags=["PDF Analysis"])
 
@@ -18,26 +20,31 @@ router = APIRouter(prefix="/api/pdf", tags=["PDF Analysis"])
 @router.post("/analyze", response_model=PDFAnalysisResponse)
 async def analyze_pdf(
     file: UploadFile = File(..., description="PDF file to analyze"),
-    gemini_api_key: str = Form(..., description="Google Gemini API key"),
+    gemini_api_key: Optional[str] = Form(None, description="Google Gemini API key (optional, uses server key if not provided)"),
     clause_store: ClauseStore = Depends(get_clause_store)
 ):
     """
     Analyze a PDF lease agreement.
-    
+
     Steps:
     1. Validate PDF file
     2. Extract text by pages
     3. Store pages in RAG knowledge base
     4. Use Gemini LLM to extract and classify clauses
     5. Return formatted results
+
+    Note: If gemini_api_key is not provided, the server's configured API key will be used.
     """
     # Validate file type
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
-    
+
+    # Use provided API key or fall back to server's configured key
+    api_key_to_use = gemini_api_key if gemini_api_key and gemini_api_key.strip() else GEMINI_API_KEY
+
     # Validate API key
-    if not gemini_api_key or gemini_api_key.strip() == "":
-        raise HTTPException(status_code=400, detail="Valid Gemini API key is required")
+    if not api_key_to_use or api_key_to_use.strip() == "":
+        raise HTTPException(status_code=400, detail="Valid Gemini API key is required (either provide one or configure GEMINI_API_KEY in backend .env)")
     
     # Save uploaded file to temporary location
     temp_file = None
@@ -81,7 +88,7 @@ async def analyze_pdf(
         classification_results, analysis_results = extract_and_analyze_with_llm(
             full_pdf_text,
             source_doc,
-            gemini_api_key,
+            api_key_to_use,
             clause_store
         )
         

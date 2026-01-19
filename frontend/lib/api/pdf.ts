@@ -16,6 +16,7 @@ export async function analyzePDF(
         headers: {
             'Content-Type': 'multipart/form-data',
         },
+        timeout: 300000, // 5 minutes for PDF analysis (2 LLM calls: classification + analysis)
     });
 
     return response.data;
