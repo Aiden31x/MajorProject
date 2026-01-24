@@ -27,7 +27,7 @@ export async function extractClausePositions(
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
-            timeout: 300000, // 5 minutes (risk scoring + clause extraction)
+            timeout: 600000, // 10 minutes (increased for clause position extraction)
         }
     );
 
