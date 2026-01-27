@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DollarSign, Scale, Settings, Clock, Shield, AlertTriangle, CheckCircle2, TrendingUp } from 'lucide-react';
+import { NegotiateButton } from '@/components/negotiation/NegotiateButton';
 
 interface RiskScoreDisplayProps {
     riskAssessment: RiskAssessment;
@@ -313,6 +314,13 @@ export function RiskScoreDisplay({ riskAssessment }: RiskScoreDisplayProps) {
                                                                     {clause.recommended_action}
                                                                 </div>
                                                             </div>
+
+                                                            {/* Negotiate Button for High-Risk Clauses */}
+                                                            {clause.severity >= 70 && (
+                                                                <div className="pt-3 border-t">
+                                                                    <NegotiateButton clause={clause} />
+                                                                </div>
+                                                            )}
                                                         </CardContent>
                                                     </Card>
                                                 ))}

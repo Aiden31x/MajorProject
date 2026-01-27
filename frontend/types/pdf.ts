@@ -54,3 +54,29 @@ export interface AnalysisState {
     result: PDFAnalysisResult | null;
 }
 
+// Negotiation Types
+export interface NegotiationRound {
+    round_number: number;
+    counter_clause: string;
+    justification: string;
+    risk_reduction: number;
+    rejection_text: string | null;
+}
+
+export interface NegotiationResult {
+    clause_text: string;
+    clause_label: string;
+    risk_score: number;
+    risk_explanation: string;
+    stance: 'Defensive' | 'Balanced' | 'Soft';
+    rounds: NegotiationRound[];
+    timestamp: string;
+}
+
+export interface NegotiationRequest {
+    clause_text: string;
+    clause_label: string;
+    risk_score: number;
+    risk_explanation: string;
+}
+

@@ -16,6 +16,12 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")  # Stable release June 2025
 
 # ================================================================
+# Groq API Configuration (for Negotiation Agent)
+# ================================================================
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+# ================================================================
 # RAG Configuration
 # ================================================================
 CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")

@@ -16,3 +16,6 @@ sentence-transformers>=2.2.2
 # Dependencies for clause extraction (fuzzy matching)
 fuzzywuzzy>=0.18.0
 python-Levenshtein>=0.21.0
+
+# Groq API for negotiation agent
+groq>=0.4.0

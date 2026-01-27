@@ -67,3 +67,23 @@ class KBStatistics(BaseModel):
     collection_name: str = Field(..., description="ChromaDB collection name")
     status: str = Field(..., description="Status message (e.g., 'Ready for queries')")
 
+
+class NegotiationRoundResponse(BaseModel):
+    """Single round of negotiation (API response)"""
+    round_number: int = Field(..., description="Round number (0=ideal, 1=alternative, 2=fallback)")
+    counter_clause: str = Field(..., description="Proposed revised clause")
+    justification: str = Field(..., description="Why this change protects tenant interests")
+    risk_reduction: float = Field(..., description="Estimated risk reduction percentage (0-100)")
+    rejection_text: Optional[str] = Field(None, description="Static rejection text (None for round 0)")
+
+
+class NegotiationResponse(BaseModel):
+    """Complete 3-round negotiation result (API response)"""
+    clause_text: str = Field(..., description="Original risky clause")
+    clause_label: str = Field(..., description="Clause category/type")
+    risk_score: float = Field(..., description="Original risk score (0-100)")
+    risk_explanation: str = Field(..., description="Why this clause is risky")
+    stance: str = Field(..., description="Auto-determined negotiation stance (Defensive/Balanced/Soft)")
+    rounds: List[NegotiationRoundResponse] = Field(..., description="All 3 negotiation rounds")
+    timestamp: str = Field(..., description="ISO timestamp of negotiation")
+
