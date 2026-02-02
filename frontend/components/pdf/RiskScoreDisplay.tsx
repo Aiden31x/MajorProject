@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { DollarSign, Scale, Settings, Clock, Shield, AlertTriangle, CheckCircle2, TrendingUp } from 'lucide-react';
+import { DollarSign, Scale, Settings, Clock, Shield, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { NegotiateButton } from '@/components/negotiation/NegotiateButton';
 
 interface RiskScoreDisplayProps {
@@ -211,10 +211,9 @@ export function RiskScoreDisplay({ riskAssessment }: RiskScoreDisplayProps) {
                 </CardHeader>
                 <CardContent>
                     <Tabs defaultValue="risks" className="w-full">
-                        <TabsList className="grid w-full grid-cols-4">
+                        <TabsList className="grid w-full grid-cols-3">
                             <TabsTrigger value="risks">Top Risks</TabsTrigger>
                             <TabsTrigger value="actions">Actions</TabsTrigger>
-                            <TabsTrigger value="negotiation">Negotiation</TabsTrigger>
                             <TabsTrigger value="clauses">Clauses</TabsTrigger>
                         </TabsList>
 
@@ -246,22 +245,6 @@ export function RiskScoreDisplay({ riskAssessment }: RiskScoreDisplayProps) {
                             ) : (
                                 <p className="text-sm text-muted-foreground text-center py-8">
                                     No immediate actions required
-                                </p>
-                            )}
-                        </TabsContent>
-
-                        {/* Negotiation Priorities Tab */}
-                        <TabsContent value="negotiation" className="space-y-2 mt-4">
-                            {riskAssessment.negotiation_priorities.length > 0 ? (
-                                riskAssessment.negotiation_priorities.map((priority, idx) => (
-                                    <div key={idx} className="flex items-start gap-2 p-3 bg-muted rounded-lg">
-                                        <TrendingUp className="h-4 w-4 mt-0.5 text-blue-600 flex-shrink-0" />
-                                        <span className="text-sm">{priority}</span>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-sm text-muted-foreground text-center py-8">
-                                    No specific negotiation priorities
                                 </p>
                             )}
                         </TabsContent>

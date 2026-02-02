@@ -189,7 +189,6 @@ Return a JSON object with this EXACT structure (no markdown, no explanation, jus
   }},
   "top_risks": ["risk 1", "risk 2", "risk 3"],
   "immediate_actions": ["action 1", "action 2"],
-  "negotiation_priorities": ["priority 1", "priority 2"],
   "total_clauses_analyzed": <count>
 }}
 
@@ -246,7 +245,7 @@ DO NOT leave page_number as -1. Every clause must have a page number estimate.""
                     data[dim]["problematic_clauses"] = clauses
 
         # Truncate top-level lists
-        for field in ["top_risks", "immediate_actions", "negotiation_priorities"]:
+        for field in ["top_risks", "immediate_actions"]:
             if field in data:
                 data[field] = [self._truncate_string(item, 150) for item in data[field][:3]]
 
@@ -355,7 +354,7 @@ DO NOT leave page_number as -1. Every clause must have a page number estimate.""
         if "immediate_actions" not in data:
             data["immediate_actions"] = ["Review analysis manually"]
         if "negotiation_priorities" not in data:
-            data["negotiation_priorities"] = ["Complete analysis first"]
+            data["negotiation_priorities"] = []  # Empty - use negotiation agent instead
         if "total_clauses_analyzed" not in data:
             data["total_clauses_analyzed"] = 0
 
@@ -394,7 +393,7 @@ DO NOT leave page_number as -1. Every clause must have a page number estimate.""
             },
             "top_risks": ["Unable to assess - analysis incomplete"],
             "immediate_actions": ["Retry analysis or review manually"],
-            "negotiation_priorities": ["Complete analysis before negotiation"],
+            "negotiation_priorities": [],  # Empty - use negotiation agent instead
             "total_clauses_analyzed": 0
         }
     
