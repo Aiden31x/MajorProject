@@ -3,9 +3,9 @@ Negotiation Endpoints
 Provides AI-powered lease clause negotiation with 3-round controlled process
 """
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Form
 
-from app.models.requests import NegotiationRequest
 from app.models.responses import NegotiationResponse
 from app.services.negotiator import NegotiationAgent
 from app.config import GROQ_API_KEY
@@ -14,7 +14,13 @@ router = APIRouter(prefix="/api/negotiation", tags=["Negotiation"])
 
 
 @router.post("/negotiate", response_model=NegotiationResponse)
-async def negotiate_clause(request: NegotiationRequest):
+async def negotiate_clause(
+    clause_text: str = Form(..., description="Original risky clause text", min_length=10),
+    clause_label: str = Form(..., description="Clause category/type (e.g., 'financial', 'termination')"),
+    risk_score: float = Form(..., description="Risk score (0-100)", ge=0, le=100),
+    risk_explanation: Optional[str] = Form(None, description="Why this clause is risky"),
+    gemini_api_key: Optional[str] = Form(None, description="Optional Gemini API key (ignored, using GROQ)"),
+):
     """
     Execute 3-round negotiation for a risky lease clause.
 
@@ -39,13 +45,17 @@ async def negotiate_clause(request: NegotiationRequest):
         # Initialize negotiation agent with server-side API key
         agent = NegotiationAgent(groq_api_key=GROQ_API_KEY)
 
+        # Use a default risk explanation if not provided
+        if not risk_explanation:
+            risk_explanation = f"This {clause_label} clause has a risk score of {risk_score}/100"
+
         # Execute 3-round negotiation
         timestamp = datetime.now().isoformat()
         result = agent.negotiate_clause(
-            clause_text=request.clause_text,
-            clause_label=request.clause_label,
-            risk_score=request.risk_score,
-            risk_explanation=request.risk_explanation,
+            clause_text=clause_text,
+            clause_label=clause_label,
+            risk_score=risk_score,
+            risk_explanation=risk_explanation,
             timestamp=timestamp
         )
 

@@ -1,16 +1,21 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ClausePosition, ClauseHighlightData } from '@/types/document';
+import { EditorDocumentResponse, EditorClausePosition } from '@/types/editor';
 import { PDFViewerWithHighlights } from '@/components/document/PDFViewerWithHighlights';
 import { ClauseRiskSummary } from '@/components/document/ClauseRiskSummary';
 import { ChatInterface } from '@/components/chat/ChatInterface';
+import { DocumentTextEditor, DocumentTextEditorRef } from '@/components/editor/DocumentTextEditor';
+import { EditorNegotiationPanel } from '@/components/editor/EditorNegotiationPanel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Upload, ArrowLeft, Loader2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Upload, ArrowLeft, Loader2, FileText, BookOpen } from 'lucide-react';
 import { extractClausePositions } from '@/lib/api/document';
+import { extractForEditor } from '@/lib/api/editor';
 import { sendChatMessage } from '@/lib/api/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -21,11 +26,24 @@ interface ChatMessage {
 
 export default function DocumentAnalysisPage() {
     const router = useRouter();
+    const editorRef = useRef<DocumentTextEditorRef>(null);
+
     const [pdfFile, setPdfFile] = useState<File | null>(null);
     const [apiKey, setApiKey] = useState<string>('');
+    const [viewMode, setViewMode] = useState<'pdf' | 'editor'>('pdf');
+
+    // PDF View state
     const [analysis, setAnalysis] = useState<ClauseHighlightData | null>(null);
     const [selectedClauses, setSelectedClauses] = useState<ClausePosition[] | null>(null);
     const [selectedPageNumber, setSelectedPageNumber] = useState<number | undefined>();
+
+    // Editor View state
+    const [editorData, setEditorData] = useState<EditorDocumentResponse | null>(null);
+    const [selectedEditorClause, setSelectedEditorClause] = useState<EditorClausePosition | null>(null);
+
+    // Track accepted clauses (by clause text for matching across views)
+    const [acceptedClauses, setAcceptedClauses] = useState<Set<string>>(new Set());
+
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
@@ -38,8 +56,11 @@ export default function DocumentAnalysisPage() {
         if (file && file.type === 'application/pdf') {
             setPdfFile(file);
             setAnalysis(null);
+            setEditorData(null);
             setSelectedClauses(null);
+            setSelectedEditorClause(null);
             setAnalyzeError(null);
+            setAcceptedClauses(new Set()); // Reset accepted clauses
         }
     };
 
@@ -53,8 +74,14 @@ export default function DocumentAnalysisPage() {
         setAnalyzeError(null);
 
         try {
-            const result = await extractClausePositions(pdfFile, apiKey);
-            setAnalysis(result);
+            // Fetch both PDF view and Editor view data
+            const [pdfResult, editorResult] = await Promise.all([
+                extractClausePositions(pdfFile, apiKey),
+                extractForEditor(pdfFile, apiKey),
+            ]);
+
+            setAnalysis(pdfResult);
+            setEditorData(editorResult);
         } catch (error: any) {
             console.error('Analysis error:', error);
             setAnalyzeError(error.response?.data?.detail || error.message || 'Failed to analyze PDF');
@@ -150,7 +177,7 @@ export default function DocumentAnalysisPage() {
 
             {/* Main Content */}
             <div className="flex-1 flex overflow-hidden">
-                {!analysis ? (
+                {!analysis || !editorData ? (
                     /* Upload Section */
                     <div className="flex-1 flex items-center justify-center p-8">
                         <Card className="w-full max-w-2xl">
@@ -218,80 +245,137 @@ export default function DocumentAnalysisPage() {
                         </Card>
                     </div>
                 ) : (
-                    /* Split Panel View */
-                    <>
-                        {/* Left Panel: PDF Viewer */}
-                        <div className="w-3/5 border-r">
-                            <PDFViewerWithHighlights
-                                pdfFile={pdfFile}
-                                pdfBase64={analysis.pdf_base64}
-                                clausePositions={analysis.clause_positions}
-                                onClauseClick={handleClauseClick}
-                                onPageClick={handlePageClick}
-                            />
+                    /* Tabbed View */
+                    <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'pdf' | 'editor')} className="flex-1 flex flex-col">
+                        {/* Tab Headers */}
+                        <div className="border-b px-4">
+                            <TabsList>
+                                <TabsTrigger value="pdf" className="flex items-center gap-2">
+                                    <FileText className="h-4 w-4" />
+                                    PDF View
+                                </TabsTrigger>
+                                <TabsTrigger value="editor" className="flex items-center gap-2">
+                                    <BookOpen className="h-4 w-4" />
+                                    Editor View
+                                </TabsTrigger>
+                            </TabsList>
                         </div>
 
-                        {/* Right Panel: Clause Summary + Chat */}
-                        <div className="w-2/5 flex flex-col">
-                            {/* Clause Risk Summary */}
-                            <div className="border-b">
-                                <ClauseRiskSummary
-                                    selectedClauses={selectedClauses}
-                                    pageNumber={selectedPageNumber}
-                                />
-                            </div>
+                        {/* PDF View Tab */}
+                        <TabsContent value="pdf" className="flex-1 flex m-0 overflow-hidden">
+                            <>
+                                {/* Left Panel: PDF Viewer */}
+                                <div className="w-3/5 border-r flex flex-col overflow-hidden">
+                                    <PDFViewerWithHighlights
+                                        pdfFile={pdfFile}
+                                        pdfBase64={analysis.pdf_base64}
+                                        clausePositions={analysis.clause_positions}
+                                        onClauseClick={handleClauseClick}
+                                        onPageClick={handlePageClick}
+                                    />
+                                </div>
 
-                            {/* Chat Interface */}
-                            <div className="flex-1 flex flex-col p-4 overflow-hidden">
-                                <h3 className="text-lg font-semibold mb-4">
-                                    Ask Questions About the Document
-                                </h3>
+                                {/* Right Panel: Clause Summary + Chat */}
+                                <div className="w-2/5 flex flex-col overflow-hidden">
+                                    {/* Clause Risk Summary - Scrollable */}
+                                    <div className="flex-1 overflow-auto border-b">
+                                        <ClauseRiskSummary
+                                            selectedClauses={selectedClauses}
+                                            pageNumber={selectedPageNumber}
+                                            acceptedClauses={acceptedClauses}
+                                        />
+                                    </div>
 
-                                {/* Chat Messages */}
-                                <ScrollArea className="flex-1 mb-4 border rounded-lg p-4 bg-slate-50">
-                                    {chatMessages.length === 0 ? (
-                                        <div className="text-center text-muted-foreground py-8">
-                                            <p>No messages yet. Ask a question about the document!</p>
-                                            {selectedClauses && selectedClauses.length > 0 && (
-                                                <p className="mt-2 text-sm">
-                                                    Currently viewing {selectedClauses.length} clause(s) from page {selectedPageNumber}
-                                                </p>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-4">
-                                            {chatMessages.map((msg, idx) => (
-                                                <div
-                                                    key={idx}
-                                                    className={`p-3 rounded-lg ${msg.role === 'user'
-                                                        ? 'bg-blue-100 ml-12'
-                                                        : 'bg-white border mr-12'
-                                                        }`}
-                                                >
-                                                    <p className="text-sm font-semibold mb-1">
-                                                        {msg.role === 'user' ? 'You' : 'Assistant'}
-                                                    </p>
-                                                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                                    {/* Chat Interface */}
+                                    <div className="flex-1 flex flex-col p-4 overflow-hidden">
+                                        <h3 className="text-lg font-semibold mb-4">
+                                            Ask Questions About the Document
+                                        </h3>
+
+                                        {/* Chat Messages */}
+                                        <ScrollArea className="flex-1 mb-4 border rounded-lg p-4 bg-slate-50">
+                                            {chatMessages.length === 0 ? (
+                                                <div className="text-center text-muted-foreground py-8">
+                                                    <p>No messages yet. Ask a question about the document!</p>
+                                                    {selectedClauses && selectedClauses.length > 0 && (
+                                                        <p className="mt-2 text-sm">
+                                                            Currently viewing {selectedClauses.length} clause(s) from page {selectedPageNumber}
+                                                        </p>
+                                                    )}
                                                 </div>
-                                            ))}
-                                            {isChatLoading && (
-                                                <div className="bg-white border mr-12 p-3 rounded-lg">
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <div className="space-y-4">
+                                                    {chatMessages.map((msg, idx) => (
+                                                        <div
+                                                            key={idx}
+                                                            className={`p-3 rounded-lg ${msg.role === 'user'
+                                                                ? 'bg-blue-100 ml-12'
+                                                                : 'bg-white border mr-12'
+                                                                }`}
+                                                        >
+                                                            <p className="text-sm font-semibold mb-1">
+                                                                {msg.role === 'user' ? 'You' : 'Assistant'}
+                                                            </p>
+                                                            <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                                                        </div>
+                                                    ))}
+                                                    {isChatLoading && (
+                                                        <div className="bg-white border mr-12 p-3 rounded-lg">
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
-                                        </div>
-                                    )}
-                                </ScrollArea>
+                                        </ScrollArea>
 
-                                {/* Chat Input */}
-                                <ChatInterface
-                                    onSendMessage={handleSendMessage}
-                                    isLoading={isChatLoading}
-                                    disabled={!apiKey}
-                                />
-                            </div>
-                        </div>
-                    </>
+                                        {/* Chat Input */}
+                                        <ChatInterface
+                                            onSendMessage={handleSendMessage}
+                                            isLoading={isChatLoading}
+                                            disabled={!apiKey}
+                                        />
+                                    </div>
+                                </div>
+                            </>
+                        </TabsContent>
+
+                        {/* Editor View Tab */}
+                        <TabsContent value="editor" className="flex-1 flex m-0 overflow-hidden">
+                            <>
+                                {/* Left Panel: TipTap Editor */}
+                                <div className="w-3/5 border-r p-4 flex flex-col overflow-hidden">
+                                    <DocumentTextEditor
+                                        ref={editorRef}
+                                        fullText={editorData.full_text}
+                                        clausePositions={editorData.clause_positions}
+                                        onClauseClick={(clause) => setSelectedEditorClause(clause)}
+                                    />
+                                </div>
+
+                                {/* Right Panel: Negotiation Panel */}
+                                <div className="w-2/5 overflow-hidden">
+                                    <EditorNegotiationPanel
+                                        selectedClause={selectedEditorClause}
+                                        apiKey={apiKey}
+                                        onAcceptSuggestion={(newText) => {
+                                            if (selectedEditorClause) {
+                                                editorRef.current?.replaceClauseText(selectedEditorClause.id, newText);
+
+                                                // Track accepted clause for PDF view indicators
+                                                setAcceptedClauses(prev => {
+                                                    const updated = new Set(prev);
+                                                    updated.add(selectedEditorClause.clause_text);
+                                                    return updated;
+                                                });
+
+                                                setSelectedEditorClause(null);
+                                            }
+                                        }}
+                                    />
+                                </div>
+                            </>
+                        </TabsContent>
+                    </Tabs>
                 )}
             </div>
         </div>

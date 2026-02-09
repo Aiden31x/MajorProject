@@ -6,12 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface ClauseRiskSummaryProps {
     selectedClauses: ClausePosition[] | null;
     pageNumber?: number;
+    acceptedClauses?: Set<string>;
 }
 
 const getCategoryColor = (category: string) => {
@@ -36,7 +37,7 @@ const getCategoryLabel = (category: string) => {
     return labels[category] || category;
 };
 
-export function ClauseRiskSummary({ selectedClauses, pageNumber }: ClauseRiskSummaryProps) {
+export function ClauseRiskSummary({ selectedClauses, pageNumber, acceptedClauses = new Set() }: ClauseRiskSummaryProps) {
     const [isExpanded, setIsExpanded] = useState(true);
 
     if (!selectedClauses || selectedClauses.length === 0) {
@@ -93,8 +94,7 @@ export function ClauseRiskSummary({ selectedClauses, pageNumber }: ClauseRiskSum
 
             {isExpanded && (
                 <CardContent className="pt-0">
-                    <ScrollArea className="max-h-[400px]">
-                        <div className="space-y-4">
+                    <div className="space-y-4">
                             {sortedClauses.map((clause, idx) => (
                                 <div key={idx}>
                                     {idx > 0 && <Separator className="my-4" />}
@@ -109,6 +109,12 @@ export function ClauseRiskSummary({ selectedClauses, pageNumber }: ClauseRiskSum
                                                 {getCategoryLabel(clause.risk_category)}
                                             </Badge>
                                             <div className="flex items-center gap-2">
+                                                {acceptedClauses.has(clause.clause_text) && (
+                                                    <Badge className="bg-green-100 text-green-800 border-green-300">
+                                                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                                                        Accepted
+                                                    </Badge>
+                                                )}
                                                 <Badge
                                                     variant={
                                                         clause.risk_severity === 'High'
@@ -127,7 +133,7 @@ export function ClauseRiskSummary({ selectedClauses, pageNumber }: ClauseRiskSum
                                         </div>
 
                                         {/* Clause text */}
-                                        <div className="bg-slate-50 p-3 rounded border">
+                                        <div className={`p-3 rounded border ${acceptedClauses.has(clause.clause_text) ? 'bg-green-50 border-green-200' : 'bg-slate-50'}`}>
                                             <p className="text-sm italic text-slate-700">
                                                 "{clause.clause_text}"
                                             </p>
@@ -168,7 +174,6 @@ export function ClauseRiskSummary({ selectedClauses, pageNumber }: ClauseRiskSum
                                 </div>
                             ))}
                         </div>
-                    </ScrollArea>
                 </CardContent>
             )}
         </Card>

@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from app.config import FRONTEND_URL, ALLOWED_ORIGINS
 from app.services.rag import ClauseStore
 from app.api import deps
-from app.api.routes import pdf, chat, kb, document, negotiation
+from app.api.routes import pdf, chat, kb, document, negotiation, editor
 from app.core.errors import validation_exception_handler, general_exception_handler
 
 
@@ -72,6 +72,7 @@ app.include_router(chat.router)
 app.include_router(kb.router)
 app.include_router(document.router)
 app.include_router(negotiation.router)
+app.include_router(editor.router, prefix="/api/editor", tags=["editor"])
 
 
 @app.get("/health")

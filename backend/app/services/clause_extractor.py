@@ -5,6 +5,7 @@ Maps risky clauses from risk assessment to their positions in PDF pages
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple
 from difflib import SequenceMatcher
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 @dataclass
@@ -152,12 +153,12 @@ class ClauseExtractor:
         risk_assessment: Dict
     ) -> List[ClausePosition]:
         """
-        Map risky clauses to PDF positions.
+        Map risky clauses to PDF positions (optimized with parallel search).
 
         Strategy:
-        1. Check if LLM provided positions (page_number, start_char, end_char)
-        2. If valid positions exist, use them directly
-        3. Otherwise, fallback to optimized fuzzy matching
+        1. Pre-cache all normalized page texts
+        2. Check if LLM provided positions
+        3. Fallback to parallelized fuzzy matching
 
         Args:
             pdf_pages: List of page dicts with 'page_number' and 'text' keys
@@ -168,10 +169,15 @@ class ClauseExtractor:
         """
         clause_positions = []
 
-        # Clear cache for new document
+        # Clear and pre-populate cache for all pages (optimization)
         self._normalized_pages_cache.clear()
+        for page in pdf_pages:
+            page_num = page.get('page_number', 0)
+            page_text = page.get('text', '')
+            self._normalized_pages_cache[page_num] = self._normalize_text(page_text)
 
-        # Extract problematic clauses from all dimensions
+        # Collect all clauses to process
+        clauses_to_find = []
         dimensions = [
             ('financial', risk_assessment.get('financial', {})),
             ('legal_compliance', risk_assessment.get('legal_compliance', {})),
@@ -181,94 +187,96 @@ class ClauseExtractor:
         ]
 
         for dim_name, dim_data in dimensions:
-            problematic_clauses = dim_data.get('problematic_clauses', [])
-
-            for clause_dict in problematic_clauses:
+            for clause_dict in dim_data.get('problematic_clauses', []):
                 clause_text = clause_dict.get('clause_text', '')
-                if not clause_text:
-                    continue
+                if clause_text:
+                    clauses_to_find.append((dim_name, clause_dict))
 
-                # NEW: Check if LLM provided positions
-                llm_page = clause_dict.get('page_number', -1)
-                llm_start = clause_dict.get('start_char', -1)
-                llm_end = clause_dict.get('end_char', -1)
+        print(f"🔍 Finding positions for {len(clauses_to_find)} clauses across {len(pdf_pages)} pages...")
 
-                # Debug: Log what LLM provided
-                print(f"🔍 Clause: {clause_text[:60]}... | LLM pos: page={llm_page}, start={llm_start}, end={llm_end}")
+        # Process clauses (page search is already parallelized in _find_clause_in_pages)
+        found_count = 0
+        for dim_name, clause_dict in clauses_to_find:
+            clause_text = clause_dict.get('clause_text', '')
+            llm_page = clause_dict.get('page_number', -1)
+            llm_start = clause_dict.get('start_char', -1)
+            llm_end = clause_dict.get('end_char', -1)
 
-                # If LLM provided page number (with or without char positions)
-                if llm_page > 0:
-                    # If LLM provided exact positions, use them
-                    if llm_start >= 0 and llm_end > llm_start:
-                        print(f"✅ Using LLM position: page {llm_page}, chars {llm_start}-{llm_end}")
-                        clause_positions.append(ClausePosition(
-                            clause_text=clause_text,
-                            page_number=llm_page,
-                            start_char=llm_start,
-                            end_char=llm_end,
-                            risk_score=float(clause_dict.get('severity', 0)),
-                            risk_severity=clause_dict.get('severity_level', 'Medium'),
-                            risk_category=dim_name,
-                            risk_explanation=clause_dict.get('risk_explanation', ''),
-                            recommended_action=clause_dict.get('recommended_action', ''),
-                            confidence=float(clause_dict.get('confidence', 0.5))
-                        ))
-                        continue
+            position = None
 
-                    # LLM provided page but not exact positions - search only that page
-                    print(f"🔍 LLM provided page {llm_page} - searching only that page")
-                    target_page = next((p for p in pdf_pages if p.get('page_number') == llm_page), None)
+            # If LLM provided exact positions, use them
+            if llm_page > 0 and llm_start >= 0 and llm_end > llm_start:
+                position = (llm_page, llm_start, llm_end)
+            # If LLM provided page only, search that page
+            elif llm_page > 0:
+                target_page = next((p for p in pdf_pages if p.get('page_number') == llm_page), None)
+                if target_page:
+                    match = self.fuzzy_match_clause(clause_text, target_page['text'], llm_page)
+                    if match:
+                        position = (llm_page, match[0], match[1])
 
-                    if target_page:
-                        match = self.fuzzy_match_clause(clause_text, target_page['text'], llm_page)
-                        if match:
-                            start_char, end_char = match
-                            print(f"✅ Found on page {llm_page} at chars {start_char}-{end_char}")
-                            clause_positions.append(ClausePosition(
-                                clause_text=clause_text,
-                                page_number=llm_page,
-                                start_char=start_char,
-                                end_char=end_char,
-                                risk_score=float(clause_dict.get('severity', 0)),
-                                risk_severity=clause_dict.get('severity_level', 'Medium'),
-                                risk_category=dim_name,
-                                risk_explanation=clause_dict.get('risk_explanation', ''),
-                                recommended_action=clause_dict.get('recommended_action', ''),
-                                confidence=float(clause_dict.get('confidence', 0.5))
-                            ))
-                            continue
-
-                # Fallback: Use fuzzy matching across all pages
-                print(f"🔍 Searching all pages for clause: {clause_text[:50]}...")
+            # Fallback: parallel search across all pages
+            if not position:
                 position = self._find_clause_in_pages(clause_text, pdf_pages)
 
-                if position:
-                    page_num, start_char, end_char = position
-                    print(f"✅ Found via fallback on page {page_num}")
-                    clause_positions.append(ClausePosition(
-                        clause_text=clause_text,
-                        page_number=page_num,
-                        start_char=start_char,
-                        end_char=end_char,
-                        risk_score=float(clause_dict.get('severity', 0)),
-                        risk_severity=clause_dict.get('severity_level', 'Medium'),
-                        risk_category=dim_name,
-                        risk_explanation=clause_dict.get('risk_explanation', ''),
-                        recommended_action=clause_dict.get('recommended_action', ''),
-                        confidence=float(clause_dict.get('confidence', 0.5))
-                    ))
-                else:
-                    print(f"⚠️ Could not find position for clause: {clause_text[:60]}...")
+            if position:
+                found_count += 1
+                page_num, start_char, end_char = position
+                clause_positions.append(ClausePosition(
+                    clause_text=clause_text,
+                    page_number=page_num,
+                    start_char=start_char,
+                    end_char=end_char,
+                    risk_score=float(clause_dict.get('severity', 0)),
+                    risk_severity=clause_dict.get('severity_level', 'Medium'),
+                    risk_category=dim_name,
+                    risk_explanation=clause_dict.get('risk_explanation', ''),
+                    recommended_action=clause_dict.get('recommended_action', ''),
+                    confidence=float(clause_dict.get('confidence', 0.5))
+                ))
 
+        print(f"✅ Found {found_count}/{len(clauses_to_find)} clause positions")
         return clause_positions
     
+    def _search_single_page(
+        self,
+        clause_text: str,
+        page: Dict,
+        clause_norm: str
+    ) -> Optional[Tuple[int, int, int, float]]:
+        """
+        Search a single page for the clause (used for parallel execution)
+
+        Returns:
+            Tuple of (page_number, start_char, end_char, ratio) or None
+        """
+        page_num = page.get('page_number', 0)
+        page_text = page.get('text', '')
+
+        match = self.fuzzy_match_clause(
+            clause_text,
+            page_text,
+            page_number=page_num
+        )
+
+        if match:
+            start_char, end_char = match
+            matched_text = page_text[start_char:end_char]
+            ratio = SequenceMatcher(
+                None,
+                clause_norm,
+                self._normalize_text(matched_text)
+            ).ratio()
+            return (page_num, start_char, end_char, ratio)
+        return None
+
     def _find_clause_in_pages(
         self,
         clause_text: str,
         pdf_pages: List[Dict]
     ) -> Optional[Tuple[int, int, int]]:
         """
-        Find which page contains the clause and its position
+        Find which page contains the clause and its position (parallelized)
 
         Args:
             clause_text: Text to search for
@@ -277,38 +285,31 @@ class ClauseExtractor:
         Returns:
             Tuple of (page_number, start_char, end_char) or None
         """
+        clause_norm = self._normalize_text(clause_text)
         best_match = None
         best_ratio = 0.0
 
-        for page in pdf_pages:
-            page_num = page.get('page_number', 0)
-            page_text = page.get('text', '')
+        # Use ThreadPoolExecutor for parallel page search
+        with ThreadPoolExecutor(max_workers=min(8, len(pdf_pages))) as executor:
+            futures = {
+                executor.submit(self._search_single_page, clause_text, page, clause_norm): page
+                for page in pdf_pages
+            }
 
-            # Use cached normalization
-            match = self.fuzzy_match_clause(
-                clause_text,
-                page_text,
-                page_number=page_num  # NEW: Pass for caching
-            )
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    page_num, start_char, end_char, ratio = result
+                    if ratio > best_ratio:
+                        best_ratio = ratio
+                        best_match = (page_num, start_char, end_char)
 
-            if match:
-                start_char, end_char = match
-                # Calculate match quality
-                matched_text = page_text[start_char:end_char]
-                ratio = SequenceMatcher(
-                    None,
-                    self._normalize_text(clause_text),
-                    self._normalize_text(matched_text)
-                ).ratio()
-
-                if ratio > best_ratio:
-                    best_ratio = ratio
-                    best_match = (page_num, start_char, end_char)
-
-                    # Early termination for excellent matches
-                    if ratio >= 0.95:
-                        print(f"✅ Found excellent match (ratio={ratio:.2f}), stopping search")
-                        break
+                        # Early termination for excellent matches
+                        if ratio >= 0.95:
+                            # Cancel remaining futures
+                            for f in futures:
+                                f.cancel()
+                            break
 
         return best_match
     

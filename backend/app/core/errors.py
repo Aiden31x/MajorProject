@@ -8,11 +8,22 @@ from fastapi.exceptions import RequestValidationError
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle validation errors (422)"""
+    # Convert validation errors to JSON-serializable format
+    errors = []
+    for error in exc.errors():
+        error_dict = {
+            "loc": error.get("loc", []),
+            "msg": error.get("msg", ""),
+            "type": error.get("type", ""),
+        }
+        # Skip the 'input' field which may contain bytes
+        errors.append(error_dict)
+
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "error": "Validation Error",
-            "details": exc.errors(),
+            "details": errors,
             "message": "Please check your request parameters"
         }
     )
