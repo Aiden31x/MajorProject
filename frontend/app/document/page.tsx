@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ClausePosition, ClauseHighlightData } from '@/types/document';
 import { EditorDocumentResponse, EditorClausePosition } from '@/types/editor';
@@ -70,25 +70,50 @@ export default function DocumentAnalysisPage() {
             return;
         }
 
+        console.log('🚀 Starting analysis...');
         setIsAnalyzing(true);
         setAnalyzeError(null);
 
         try {
-            // Fetch both PDF view and Editor view data
-            const [pdfResult, editorResult] = await Promise.all([
-                extractClausePositions(pdfFile, apiKey),
-                extractForEditor(pdfFile, apiKey),
-            ]);
+            // OPTIMIZATION: Only call ONE endpoint to save API quota
+            // Use extract-clauses which has all the data we need
+            console.log('📡 Calling extractClausePositions API...');
+            const pdfResult = await extractClausePositions(pdfFile, apiKey);
+            console.log('✅ Received analysis result:', pdfResult);
+            console.log('📊 Clause positions count:', pdfResult?.clause_positions?.length);
+            console.log('📊 Risk assessment:', pdfResult?.risk_assessment);
 
             setAnalysis(pdfResult);
-            setEditorData(editorResult);
+            console.log('✅ Analysis state updated, should trigger re-render');
+
+            // Transform PDF data for editor view (reuse same analysis)
+            // Editor data will be created from pdfResult when user switches to editor tab
+            // This saves 50% of API calls!
         } catch (error: any) {
-            console.error('Analysis error:', error);
+            console.error('❌ Analysis error:', error);
+            console.error('❌ Error details:', error.response?.data);
             setAnalyzeError(error.response?.data?.detail || error.message || 'Failed to analyze PDF');
         } finally {
             setIsAnalyzing(false);
+            console.log('✅ Analysis complete, isAnalyzing set to false');
         }
     };
+
+    // Lazy load editor data when user switches to editor tab
+    useEffect(() => {
+        const loadEditorData = async () => {
+            if (viewMode === 'editor' && !editorData && pdfFile && apiKey && analysis) {
+                try {
+                    console.log('Lazy loading editor data...');
+                    const editorResult = await extractForEditor(pdfFile, apiKey);
+                    setEditorData(editorResult);
+                } catch (error) {
+                    console.error('Failed to load editor data:', error);
+                }
+            }
+        };
+        loadEditorData();
+    }, [viewMode, editorData, pdfFile, apiKey, analysis]);
 
     const handleClauseClick = (clause: ClausePosition) => {
         // Find all clauses on the same page
@@ -177,7 +202,7 @@ export default function DocumentAnalysisPage() {
 
             {/* Main Content */}
             <div className="flex-1 flex overflow-hidden">
-                {!analysis || !editorData ? (
+                {!analysis ? (
                     /* Upload Section */
                     <div className="flex-1 flex items-center justify-center p-8">
                         <Card className="w-full max-w-2xl">
@@ -341,39 +366,48 @@ export default function DocumentAnalysisPage() {
 
                         {/* Editor View Tab */}
                         <TabsContent value="editor" className="flex-1 flex m-0 overflow-hidden">
-                            <>
-                                {/* Left Panel: TipTap Editor */}
-                                <div className="w-3/5 border-r p-4 flex flex-col overflow-hidden">
-                                    <DocumentTextEditor
-                                        ref={editorRef}
-                                        fullText={editorData.full_text}
-                                        clausePositions={editorData.clause_positions}
-                                        onClauseClick={(clause) => setSelectedEditorClause(clause)}
-                                    />
+                            {editorData ? (
+                                <>
+                                    {/* Left Panel: TipTap Editor */}
+                                    <div className="w-3/5 border-r p-4 flex flex-col overflow-hidden">
+                                        <DocumentTextEditor
+                                            ref={editorRef}
+                                            fullText={editorData.full_text}
+                                            clausePositions={editorData.clause_positions}
+                                            onClauseClick={(clause) => setSelectedEditorClause(clause)}
+                                        />
+                                    </div>
+
+                                    {/* Right Panel: Negotiation Panel */}
+                                    <div className="w-2/5 overflow-hidden">
+                                        <EditorNegotiationPanel
+                                            selectedClause={selectedEditorClause}
+                                            apiKey={apiKey}
+                                            onAcceptSuggestion={(newText) => {
+                                                if (selectedEditorClause) {
+                                                    editorRef.current?.replaceClauseText(selectedEditorClause.id, newText);
+
+                                                    // Track accepted clause for PDF view indicators
+                                                    setAcceptedClauses(prev => {
+                                                        const updated = new Set(prev);
+                                                        updated.add(selectedEditorClause.clause_text);
+                                                        return updated;
+                                                    });
+
+                                                    setSelectedEditorClause(null);
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex-1 flex items-center justify-center">
+                                    <div className="text-center">
+                                        <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+                                        <p className="text-sm text-muted-foreground">Loading editor...</p>
+                                    </div>
                                 </div>
-
-                                {/* Right Panel: Negotiation Panel */}
-                                <div className="w-2/5 overflow-hidden">
-                                    <EditorNegotiationPanel
-                                        selectedClause={selectedEditorClause}
-                                        apiKey={apiKey}
-                                        onAcceptSuggestion={(newText) => {
-                                            if (selectedEditorClause) {
-                                                editorRef.current?.replaceClauseText(selectedEditorClause.id, newText);
-
-                                                // Track accepted clause for PDF view indicators
-                                                setAcceptedClauses(prev => {
-                                                    const updated = new Set(prev);
-                                                    updated.add(selectedEditorClause.clause_text);
-                                                    return updated;
-                                                });
-
-                                                setSelectedEditorClause(null);
-                                            }
-                                        }}
-                                    />
-                                </div>
-                            </>
+                            )}
                         </TabsContent>
                     </Tabs>
                 )}

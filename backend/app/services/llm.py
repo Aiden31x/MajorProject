@@ -359,6 +359,128 @@ def extract_analyze_and_score_risks(
         return classification_results, analysis_results, {}
 
 
+# VALIDATION RISK THRESHOLD
+# IMPORTANT: Only validate clauses above risk threshold to keep costs predictable,
+# UI uncluttered, and trust high. Low-risk clauses don't need validation.
+VALIDATION_RISK_THRESHOLD = 40.0  # Only validate Medium (40+) and High (70+) risk clauses
+
+
+def extract_analyze_and_score_risks_with_validation(
+    full_pdf_text: str,
+    source_doc: str,
+    gemini_api_key: str,
+    clause_store,
+    timestamp: str = "",
+    pdf_pages: List[Dict] = None,
+    enable_validation: bool = True
+) -> Tuple[str, str, Dict[str, Any], List[Dict]]:
+    """
+    Complete 4-step pipeline: Classification → Analysis → Risk Scoring → Validation.
+    
+    IMPORTANT: Only validates clauses above VALIDATION_RISK_THRESHOLD to keep costs predictable
+    and UI uncluttered. Low-risk clauses don't need validation.
+    
+    Args:
+        full_pdf_text: Complete text from PDF
+        source_doc: Source document filename
+        gemini_api_key: Google Gemini API key
+        clause_store: ClauseStore instance for RAG context
+        timestamp: ISO timestamp for the assessment
+        pdf_pages: Optional list of page dicts for position extraction
+        enable_validation: Whether to run validation step (default: True)
+        
+    Returns:
+        Tuple of (classification_results, analysis_results, risk_assessment_dict, validation_results_list)
+    """
+    from app.services.validator import ValidationAgent, ValidationInput
+    
+    print("🚀 Starting 4-step pipeline: Classification → Analysis → Risk Scoring → Validation")
+    
+    # Steps 1-3: Classification, Analysis, and Risk Scoring
+    classification_results, analysis_results, risk_assessment_dict = extract_analyze_and_score_risks(
+        full_pdf_text,
+        source_doc,
+        gemini_api_key,
+        clause_store,
+        timestamp,
+        pdf_pages
+    )
+    
+    # Step 4: Validate high-risk clauses only
+    validation_results = []
+    
+    if enable_validation and risk_assessment_dict:
+        try:
+            print(f"🔍 Step 4: Validating clauses with risk score >= {VALIDATION_RISK_THRESHOLD}")
+            validator = ValidationAgent(gemini_api_key)
+            
+            # Collect all problematic clauses from all dimensions
+            clauses_to_validate = []
+            
+            for dimension in ["financial", "legal_compliance", "operational", "timeline", "strategic_reputational"]:
+                if dimension not in risk_assessment_dict:
+                    continue
+                    
+                dimension_data = risk_assessment_dict[dimension]
+                problematic_clauses = dimension_data.get("problematic_clauses", [])
+                
+                for clause_dict in problematic_clauses:
+                    risk_score = clause_dict.get("severity", 0)
+                    
+                    # Skip low-risk clauses (below threshold)
+                    if risk_score < VALIDATION_RISK_THRESHOLD:
+                        continue
+                    
+                    clauses_to_validate.append({
+                        "clause_text": clause_dict.get("clause_text", ""),
+                        "clause_category": dimension,
+                        "risk_score": risk_score,
+                        "risk_explanation": clause_dict.get("risk_explanation", ""),
+                        "full_document_context": full_pdf_text[:50000]
+                    })
+            
+            if clauses_to_validate:
+                print(f"📋 Validating {len(clauses_to_validate)} high-risk clauses...")
+                
+                # Create validation inputs
+                validation_inputs = [
+                    ValidationInput(
+                        clause_text=clause["clause_text"],
+                        clause_category=clause["clause_category"],
+                        risk_score=clause["risk_score"],
+                        risk_explanation=clause["risk_explanation"],
+                        full_document_context=clause["full_document_context"]
+                    )
+                    for clause in clauses_to_validate
+                ]
+                
+                # Batch validate
+                results = validator.validate_clauses_batch(validation_inputs, max_workers=5)
+                
+                # Convert to dicts
+                validation_results = [result.to_dict() for result in results]
+                
+                print(f"✅ Validation complete: {len(validation_results)} clauses validated")
+                
+                # Log summary
+                passed = sum(1 for r in results if r.status == "PASS")
+                warned = sum(1 for r in results if r.status == "WARN")
+                failed = sum(1 for r in results if r.status == "FAIL")
+                print(f"📊 Validation summary: {passed} PASS, {warned} WARN, {failed} FAIL")
+            else:
+                print("ℹ️ No high-risk clauses found to validate")
+                
+        except Exception as e:
+            error_msg = f"⚠️ Error during validation: {str(e)}"
+            print(f"❌ Validation error: {e}")
+            import traceback
+            traceback.print_exc()
+            # Don't fail the whole pipeline if validation fails
+    
+    print("✅ 4-step pipeline complete!")
+    return classification_results, analysis_results, risk_assessment_dict, validation_results
+
+
 def build_conversation_context(history: List[Tuple[str, str]], max_history: int = 5) -> str:
     """
     Convert history format to readable context string.

@@ -24,7 +24,7 @@ export async function extractForEditor(
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
-            timeout: 600000, // 10 minutes for analysis
+            timeout: 1200000, // 20 minutes (increased for validation with rate limiting)
         }
     );
 
@@ -49,7 +49,7 @@ export async function reanalyzeText(
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
-            timeout: 600000, // 10 minutes for re-analysis
+            timeout: 1200000, // 20 minutes (increased for validation with rate limiting)
         }
     );
 

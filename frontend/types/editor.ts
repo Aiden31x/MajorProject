@@ -1,6 +1,7 @@
 /**
  * Editor-specific TypeScript types for TipTap document editor
  */
+import { ValidationResult } from './validation';
 
 export interface EditorClausePosition {
     id: string;
@@ -43,4 +44,6 @@ export interface NegotiationRound {
     justification: string;
     risk_reduction: number;
     rejection_text?: string;
+    validation_result?: ValidationResult;  // NEW: Optional validation result for counter-clauses
 }
+

@@ -21,6 +21,7 @@ class NegotiationRound:
     justification: str
     risk_reduction: float  # 0-100 (numeric score)
     rejection_text: Optional[str]  # None for round 0
+    validation_result: Optional[Dict] = None  # NEW: Optional validation result for counter-clauses
 
 
 @dataclass

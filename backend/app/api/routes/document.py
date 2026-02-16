@@ -14,7 +14,7 @@ from app.models.document import (
 )
 from app.services.clause_extractor import ClauseExtractor, ClausePosition
 from app.services.pdf_utils import extract_text_from_pdf, extract_text_by_pages
-from app.services.llm import extract_analyze_and_score_risks
+from app.services.llm import extract_analyze_and_score_risks_with_validation
 from app.services.risk_scorer import RiskScoringAgent
 from app.config import GEMINI_API_KEY
 from app.api.deps import get_clause_store
@@ -26,23 +26,26 @@ router = APIRouter(prefix="/api/document", tags=["document"])
 async def extract_clause_positions(
     file: UploadFile = File(...),
     gemini_api_key: Optional[str] = Form(None),
+    enable_validation: bool = Form(True),
     clause_store = Depends(get_clause_store)
 ):
     """
-    Extract PDF, analyze risks, and return clause positions for highlighting
+    Extract PDF, analyze risks, validate clauses, and return clause positions for highlighting
     
     This endpoint:
     1. Extracts text from the uploaded PDF
     2. Performs risk analysis using Gemini LLM
-    3. Maps risky clauses to their page positions
-    4. Returns the complete analysis with clause positions and PDF data
+    3. Validates high-risk clauses (risk >= 40)
+    4. Maps risky clauses to their page positions
+    5. Returns the complete analysis with clause positions, validation results, and PDF data
     
     Args:
         file: PDF file to analyze
         gemini_api_key: Optional Gemini API key (uses env var if not provided)
+        enable_validation: Whether to validate high-risk clauses (default: True)
     
     Returns:
-        ClauseHighlightResponse with risk assessment, clause positions, and PDF data
+        ClauseHighlightResponse with risk assessment, validation results, clause positions, and PDF data
     """
     # Validate file type
     if not file.filename.endswith('.pdf'):
@@ -85,19 +88,21 @@ async def extract_clause_positions(
         
         print(f"✅ Extracted {len(full_text)} characters from {total_pages} pages")
         
-        # Perform risk analysis
-        print("🤖 Starting risk analysis...")
+        # Perform risk analysis with validation
+        print("🤖 Starting risk analysis with validation...")
         timestamp = datetime.utcnow().isoformat()
 
-        # Call the 3-step pipeline (classification, analysis, risk scoring)
-        classification_results, analysis_results, risk_assessment_dict = \
-            extract_analyze_and_score_risks(
+        # Call the 4-step pipeline (classification, analysis, risk scoring, validation)
+        # TEMPORARY: Validation disabled due to Gemini free tier daily quota (20 req/day)
+        classification_results, analysis_results, risk_assessment_dict, validation_results = \
+            extract_analyze_and_score_risks_with_validation(
                 full_pdf_text=full_text,
                 source_doc=file.filename,
                 gemini_api_key=api_key,
                 clause_store=clause_store,
                 timestamp=timestamp,
-                pdf_pages=pdf_pages  # NEW: Pass page data for position extraction
+                pdf_pages=pdf_pages,
+                enable_validation=False  # Disabled - quota exhausted
             )
         
         print(f"✅ Risk analysis complete: Overall score {risk_assessment_dict['overall_score']}")
@@ -130,23 +135,42 @@ async def extract_clause_positions(
             # Graceful degradation: Continue with empty positions
             clause_positions = []
         
-        # Convert clause positions to response models
-        clause_position_responses = [
-            ClausePositionResponse(
-                clause_text=cp.clause_text,
-                page_number=cp.page_number,
-                start_char=cp.start_char,
-                end_char=cp.end_char,
-                risk_score=cp.risk_score,
-                risk_severity=cp.risk_severity,
-                risk_category=cp.risk_category,
-                risk_explanation=cp.risk_explanation,
-                recommended_action=cp.recommended_action,
-                confidence=cp.confidence,
-                bounding_box=cp.bounding_box
+        # Match validation results to clause positions
+        # Create a map of clause text to validation result
+        validation_map = {}
+        if validation_results:
+            for validation_result in validation_results:
+                clause_text = validation_result.get("clause_text", "").strip()
+                if clause_text:
+                    validation_map[clause_text] = validation_result
+            print(f"📋 Created validation map with {len(validation_map)} entries")
+        
+        # Convert clause positions to response models and attach validation results
+        clause_position_responses = []
+        for cp in clause_positions:
+            # Try to find matching validation result
+            validation_result = validation_map.get(cp.clause_text.strip())
+            
+            clause_position_responses.append(
+                ClausePositionResponse(
+                    clause_text=cp.clause_text,
+                    page_number=cp.page_number,
+                    start_char=cp.start_char,
+                    end_char=cp.end_char,
+                    risk_score=cp.risk_score,
+                    risk_severity=cp.risk_severity,
+                    risk_category=cp.risk_category,
+                    risk_explanation=cp.risk_explanation,
+                    recommended_action=cp.recommended_action,
+                    confidence=cp.confidence,
+                    bounding_box=cp.bounding_box,
+                    validation_result=validation_result  # NEW: Attach validation result
+                )
             )
-            for cp in clause_positions
-        ]
+        
+        if validation_results:
+            matched = sum(1 for cpr in clause_position_responses if cpr.validation_result is not None)
+            print(f"📊 Matched {matched}/{len(validation_results)} validation results to clause positions")
         
         # Encode PDF to base64
         pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')

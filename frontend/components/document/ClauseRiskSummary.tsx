@@ -8,6 +8,9 @@ import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertCircle, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ValidationStatusBadge } from '@/components/feedback/ValidationStatusBadge';
+import { ValidationIssuesList } from '@/components/feedback/ValidationIssuesList';
+import { ValidationFeedback } from '@/components/feedback/ValidationFeedback';
 
 interface ClauseRiskSummaryProps {
     selectedClauses: ClausePosition[] | null;
@@ -95,85 +98,115 @@ export function ClauseRiskSummary({ selectedClauses, pageNumber, acceptedClauses
             {isExpanded && (
                 <CardContent className="pt-0">
                     <div className="space-y-4">
-                            {sortedClauses.map((clause, idx) => (
-                                <div key={idx}>
-                                    {idx > 0 && <Separator className="my-4" />}
+                        {sortedClauses.map((clause, idx) => (
+                            <div key={idx}>
+                                {idx > 0 && <Separator className="my-4" />}
 
-                                    <div className="space-y-3">
-                                        {/* Header with category and severity */}
-                                        <div className="flex items-center justify-between">
-                                            <Badge
-                                                variant="outline"
-                                                className={getCategoryColor(clause.risk_category)}
-                                            >
-                                                {getCategoryLabel(clause.risk_category)}
-                                            </Badge>
-                                            <div className="flex items-center gap-2">
-                                                {acceptedClauses.has(clause.clause_text) && (
-                                                    <Badge className="bg-green-100 text-green-800 border-green-300">
-                                                        <CheckCircle2 className="h-3 w-3 mr-1" />
-                                                        Accepted
-                                                    </Badge>
-                                                )}
-                                                <Badge
-                                                    variant={
-                                                        clause.risk_severity === 'High'
-                                                            ? 'destructive'
-                                                            : clause.risk_severity === 'Medium'
-                                                                ? 'default'
-                                                                : 'secondary'
-                                                    }
-                                                >
-                                                    {clause.risk_severity}
+                                <div className="space-y-3">
+                                    {/* Header with category and severity */}
+                                    <div className="flex items-center justify-between">
+                                        <Badge
+                                            variant="outline"
+                                            className={getCategoryColor(clause.risk_category)}
+                                        >
+                                            {getCategoryLabel(clause.risk_category)}
+                                        </Badge>
+                                        <div className="flex items-center gap-2">
+                                            {acceptedClauses.has(clause.clause_text) && (
+                                                <Badge className="bg-green-100 text-green-800 border-green-300">
+                                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                                    Accepted
                                                 </Badge>
-                                                <span className="text-sm font-semibold">
-                                                    {clause.risk_score.toFixed(1)}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        {/* Clause text */}
-                                        <div className={`p-3 rounded border ${acceptedClauses.has(clause.clause_text) ? 'bg-green-50 border-green-200' : 'bg-slate-50'}`}>
-                                            <p className="text-sm italic text-slate-700">
-                                                "{clause.clause_text}"
-                                            </p>
-                                        </div>
-
-                                        {/* Risk explanation */}
-                                        <div>
-                                            <p className="text-xs font-semibold text-slate-600 mb-1">
-                                                Risk Explanation:
-                                            </p>
-                                            <p className="text-sm text-slate-700">
-                                                {clause.risk_explanation}
-                                            </p>
-                                        </div>
-
-                                        {/* Recommended action */}
-                                        <div className="bg-blue-50 p-3 rounded border border-blue-200">
-                                            <p className="text-xs font-semibold text-blue-800 mb-1">
-                                                Recommended Action:
-                                            </p>
-                                            <p className="text-sm text-blue-900">
-                                                {clause.recommended_action}
-                                            </p>
-                                        </div>
-
-                                        {/* Confidence */}
-                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                            <span>Confidence:</span>
-                                            <div className="flex-1 bg-slate-200 h-2 rounded-full overflow-hidden">
-                                                <div
-                                                    className="bg-blue-500 h-full transition-all"
-                                                    style={{ width: `${clause.confidence * 100}%` }}
-                                                />
-                                            </div>
-                                            <span>{(clause.confidence * 100).toFixed(0)}%</span>
+                                            )}
+                                            <Badge
+                                                variant={
+                                                    clause.risk_severity === 'High'
+                                                        ? 'destructive'
+                                                        : clause.risk_severity === 'Medium'
+                                                            ? 'default'
+                                                            : 'secondary'
+                                                }
+                                            >
+                                                {clause.risk_severity}
+                                            </Badge>
+                                            <span className="text-sm font-semibold">
+                                                {clause.risk_score.toFixed(1)}
+                                            </span>
                                         </div>
                                     </div>
+
+                                    {/* Clause text */}
+                                    <div className={`p-3 rounded border ${acceptedClauses.has(clause.clause_text) ? 'bg-green-50 border-green-200' : 'bg-slate-50'}`}>
+                                        <p className="text-sm italic text-slate-700">
+                                            "{clause.clause_text}"
+                                        </p>
+                                    </div>
+
+                                    {/* Risk explanation */}
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-600 mb-1">
+                                            Risk Explanation:
+                                        </p>
+                                        <p className="text-sm text-slate-700">
+                                            {clause.risk_explanation}
+                                        </p>
+                                    </div>
+
+                                    {/* Recommended action */}
+                                    <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                                        <p className="text-xs font-semibold text-blue-800 mb-1">
+                                            Recommended Action:
+                                        </p>
+                                        <p className="text-sm text-blue-900">
+                                            {clause.recommended_action}
+                                        </p>
+                                    </div>
+
+                                    {/* Confidence */}
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                        <span>Confidence:</span>
+                                        <div className="flex-1 bg-slate-200 h-2 rounded-full overflow-hidden">
+                                            <div
+                                                className="bg-blue-500 h-full transition-all"
+                                                style={{ width: `${clause.confidence * 100}%` }}
+                                            />
+                                        </div>
+                                        <span>{(clause.confidence * 100).toFixed(0)}%</span>
+                                    </div>
+
+                                    {/* Validation Section */}
+                                    {clause.validation_result && (
+                                        <div className="space-y-3 pt-2 border-t">
+                                            <p className="text-xs font-semibold text-slate-600">
+                                                Validation Analysis:
+                                            </p>
+
+                                            {/* Validation Status Badge */}
+                                            <ValidationStatusBadge
+                                                status={clause.validation_result.status}
+                                                confidence={clause.validation_result.confidence}
+                                            />
+
+                                            {/* Validation Issues List */}
+                                            {clause.validation_result.issues && clause.validation_result.issues.length > 0 && (
+                                                <ValidationIssuesList issues={clause.validation_result.issues} />
+                                            )}
+
+                                            {/* Feedback Component */}
+                                            <ValidationFeedback
+                                                validationResultId={clause.validation_result.id}
+                                                validationStatus={clause.validation_result.status}
+                                                clauseText={clause.clause_text}
+                                                onFeedbackSubmitted={() => {
+                                                    console.log('Feedback submitted for clause validation');
+                                                }}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
-                            ))}
-                        </div>
+                            </div>
+                        ))}
+                    </div>
                 </CardContent>
             )}
         </Card>

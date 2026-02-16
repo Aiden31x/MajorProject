@@ -18,6 +18,7 @@ class ClausePositionResponse(BaseModel):
     recommended_action: str
     confidence: float
     bounding_box: Optional[Dict[str, float]] = None
+    validation_result: Optional[Dict[str, Any]] = None  # Validation result from validator agent
 
 
 class PDFMetadata(BaseModel):

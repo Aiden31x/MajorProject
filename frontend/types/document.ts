@@ -1,6 +1,8 @@
 /*
  * TypeScript interfaces for document analysis with clause highlighting
  */
+import { ValidationResult } from './validation';
+
 export interface ClausePosition {
     clause_text: string;
     page_number: number;
@@ -12,6 +14,7 @@ export interface ClausePosition {
     risk_explanation: string;
     recommended_action: string;
     confidence: number;
+    validation_result?: ValidationResult;  // NEW: Optional validation result
     bounding_box?: {
         x: number;
         y: number;

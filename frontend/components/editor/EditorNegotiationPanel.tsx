@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import axios from 'axios';
+import { ValidationStatusBadge } from '@/components/feedback/ValidationStatusBadge';
+import { ValidationIssuesList } from '@/components/feedback/ValidationIssuesList';
+import { ValidationFeedback } from '@/components/feedback/ValidationFeedback';
 
 interface EditorNegotiationPanelProps {
     selectedClause: EditorClausePosition | null;
@@ -217,6 +220,33 @@ export function EditorNegotiationPanel({
                                         </p>
                                         <p className="text-sm">{round.justification}</p>
                                     </div>
+
+                                    {/* Validation Section */}
+                                    {round.validation_result && (
+                                        <div className="space-y-2 pt-2 border-t">
+                                            <p className="text-xs font-semibold text-slate-600">
+                                                Validation Analysis:
+                                            </p>
+
+                                            <ValidationStatusBadge
+                                                status={round.validation_result.status}
+                                                confidence={round.validation_result.confidence}
+                                            />
+
+                                            {round.validation_result.issues && round.validation_result.issues.length > 0 && (
+                                                <ValidationIssuesList issues={round.validation_result.issues} />
+                                            )}
+
+                                            <ValidationFeedback
+                                                validationResultId={round.validation_result.id}
+                                                validationStatus={round.validation_result.status}
+                                                clauseText={round.counter_clause}
+                                                onFeedbackSubmitted={() => {
+                                                    console.log('Feedback submitted for negotiation round validation');
+                                                }}
+                                            />
+                                        </div>
+                                    )}
 
                                     {/* Rejection Text (if exists) */}
                                     {round.rejection_text && (

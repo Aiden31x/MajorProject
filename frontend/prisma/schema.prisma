@@ -32,3 +32,38 @@ model Message {
   @@index([conversationId, createdAt])
   @@map("messages")
 }
+
+model ValidationResult {
+  id                String    @id @default(uuid())
+  clauseText        String    @db.Text
+  clauseCategory    String
+  riskScore         Float
+  status            String    // PASS, WARN, FAIL
+  confidence        Float
+  issues            Json      // Array of ValidationIssue objects
+  documentSource    String?
+  timestamp         DateTime  @default(now())
+  validationTimeMs  Float?
+  feedback          Feedback?
+
+  @@index([status, timestamp])
+  @@index([clauseCategory, timestamp])
+  @@map("validation_results")
+}
+
+model Feedback {
+  id                   String           @id @default(uuid())
+  validationResultId   String           @unique @map("validation_result_id")
+  validationResult     ValidationResult @relation(fields: [validationResultId], references: [id], onDelete: Cascade)
+  thumbsUp             Boolean
+  followUpReason       String?
+  additionalComments   String?          @db.Text
+  tags                 Json
+  agentDecision        String
+  userAcceptedClause   Boolean?
+  createdAt            DateTime         @default(now()) @map("created_at")
+
+  @@index([thumbsUp, createdAt])
+  @@index([agentDecision, createdAt])
+  @@map("feedback")
+}
