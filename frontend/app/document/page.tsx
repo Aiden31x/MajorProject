@@ -318,7 +318,7 @@ export default function DocumentAnalysisPage() {
                                         </h3>
 
                                         {/* Chat Messages */}
-                                        <ScrollArea className="flex-1 mb-4 border rounded-lg p-4 bg-slate-50">
+                                        <ScrollArea className="flex-1 min-h-0 mb-4 border rounded-lg p-4 bg-slate-50">
                                             {chatMessages.length === 0 ? (
                                                 <div className="text-center text-muted-foreground py-8">
                                                     <p>No messages yet. Ask a question about the document!</p>
@@ -379,7 +379,7 @@ export default function DocumentAnalysisPage() {
                                     </div>
 
                                     {/* Right Panel: Negotiation Panel */}
-                                    <div className="w-2/5 overflow-hidden">
+                                    <div className="w-2/5 flex flex-col overflow-hidden">
                                         <EditorNegotiationPanel
                                             selectedClause={selectedEditorClause}
                                             apiKey={apiKey}

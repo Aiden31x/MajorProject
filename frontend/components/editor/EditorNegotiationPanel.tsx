@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { EditorClausePosition, NegotiationRound } from '@/types/editor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,13 @@ export function EditorNegotiationPanel({
     const [suggestions, setSuggestions] = useState<NegotiationRound[] | null>(null);
     const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const suggestionsRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (suggestions && suggestionsRef.current) {
+            suggestionsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, [suggestions]);
 
     const handleGetSuggestions = async () => {
         if (!selectedClause || !apiKey) return;
@@ -81,7 +88,7 @@ export function EditorNegotiationPanel({
 
     if (!selectedClause) {
         return (
-            <div className="p-6 text-center text-muted-foreground">
+            <div className="flex-1 p-6 text-center text-muted-foreground">
                 <p>Click on a highlighted clause to view details and get suggestions</p>
             </div>
         );
@@ -101,7 +108,7 @@ export function EditorNegotiationPanel({
     };
 
     return (
-        <ScrollArea className="h-full">
+        <ScrollArea className="flex-1 min-h-0">
             <div className="p-4 space-y-4">
                 {/* Selected Clause Details */}
                 <Card>
@@ -170,6 +177,7 @@ export function EditorNegotiationPanel({
 
                 {/* Negotiation Suggestions */}
                 {suggestions && (
+                    <div ref={suggestionsRef}>
                     <Card>
                         <CardHeader>
                             <CardTitle className="text-lg">Negotiation Suggestions</CardTitle>
@@ -271,6 +279,7 @@ export function EditorNegotiationPanel({
                             </Button>
                         </CardContent>
                     </Card>
+                    </div>
                 )}
             </div>
         </ScrollArea>
