@@ -120,7 +120,7 @@ export function RiskScoreDisplay({ riskAssessment }: RiskScoreDisplayProps) {
                                 value={riskAssessment.overall_score}
                                 className="h-4"
                             />
-                            <div className={`text-sm font-medium ${getSeverityColor(riskAssessment.overall_severity)}`}>
+                            <div className={`text-base font-medium ${getSeverityColor(riskAssessment.overall_severity)}`}>
                                 {riskAssessment.overall_severity} Risk Level
                             </div>
                         </div>
@@ -130,15 +130,15 @@ export function RiskScoreDisplay({ riskAssessment }: RiskScoreDisplayProps) {
                     <div className="grid grid-cols-3 gap-4 pt-4 border-t">
                         <div className="text-center">
                             <div className="text-2xl font-bold">{riskAssessment.total_clauses_analyzed}</div>
-                            <div className="text-sm text-muted-foreground">Clauses Analyzed</div>
+                            <div className="text-base text-muted-foreground">Clauses Analyzed</div>
                         </div>
                         <div className="text-center">
                             <div className="text-2xl font-bold text-red-600">{riskAssessment.high_risk_clauses_count}</div>
-                            <div className="text-sm text-muted-foreground">High-Risk Clauses</div>
+                            <div className="text-base text-muted-foreground">High-Risk Clauses</div>
                         </div>
                         <div className="text-center">
                             <div className="text-2xl font-bold text-orange-600">{riskAssessment.top_risks.length}</div>
-                            <div className="text-sm text-muted-foreground">Top Risks</div>
+                            <div className="text-base text-muted-foreground">Top Risks</div>
                         </div>
                     </div>
                 </CardContent>
@@ -187,8 +187,8 @@ export function RiskScoreDisplay({ riskAssessment }: RiskScoreDisplayProps) {
 
                                     {/* Key Findings */}
                                     <div className="space-y-1">
-                                        <div className="text-sm font-medium">Key Findings:</div>
-                                        <ul className="text-xs text-muted-foreground space-y-1">
+                                        <div className="text-base font-medium">Key Findings:</div>
+                                        <ul className="text-sm text-muted-foreground space-y-1">
                                             {data.key_findings.slice(0, 2).map((finding, idx) => (
                                                 <li key={idx} className="line-clamp-2">• {finding}</li>
                                             ))}
@@ -223,11 +223,11 @@ export function RiskScoreDisplay({ riskAssessment }: RiskScoreDisplayProps) {
                                 riskAssessment.top_risks.map((risk, idx) => (
                                     <Alert key={idx} variant="destructive">
                                         <AlertTriangle className="h-4 w-4" />
-                                        <AlertDescription>{risk}</AlertDescription>
+                                        <AlertDescription className="text-base">{risk}</AlertDescription>
                                     </Alert>
                                 ))
                             ) : (
-                                <p className="text-sm text-muted-foreground text-center py-8">
+                                <p className="text-base text-muted-foreground text-center py-8">
                                     No critical risks identified
                                 </p>
                             )}
@@ -239,11 +239,11 @@ export function RiskScoreDisplay({ riskAssessment }: RiskScoreDisplayProps) {
                                 riskAssessment.immediate_actions.map((action, idx) => (
                                     <div key={idx} className="flex items-start gap-2 p-3 bg-muted rounded-lg">
                                         <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-600 flex-shrink-0" />
-                                        <span className="text-sm">{action}</span>
+                                        <span className="text-base">{action}</span>
                                     </div>
                                 ))
                             ) : (
-                                <p className="text-sm text-muted-foreground text-center py-8">
+                                <p className="text-base text-muted-foreground text-center py-8">
                                     No immediate actions required
                                 </p>
                             )}
@@ -259,7 +259,7 @@ export function RiskScoreDisplay({ riskAssessment }: RiskScoreDisplayProps) {
 
                                         return (
                                             <div key={dimension.key} className="space-y-2">
-                                                <h4 className="font-semibold text-sm flex items-center gap-2">
+                                                <h4 className="font-semibold text-base flex items-center gap-2">
                                                     <dimension.icon className="w-4 h-4" />
                                                     {dimension.name} Issues
                                                 </h4>
@@ -283,11 +283,11 @@ export function RiskScoreDisplay({ riskAssessment }: RiskScoreDisplayProps) {
                                                                 </div>
                                                             </div>
 
-                                                            <p className="text-sm italic text-muted-foreground border-l-2 pl-3">
+                                                            <p className="text-base italic text-muted-foreground border-l-2 pl-3">
                                                                 "{clause.clause_text.substring(0, 200)}{clause.clause_text.length > 200 ? '...' : ''}"
                                                             </p>
 
-                                                            <div className="space-y-1 text-sm">
+                                                            <div className="space-y-1 text-base">
                                                                 <div>
                                                                     <span className="font-semibold">Risk: </span>
                                                                     {clause.risk_explanation}

@@ -125,28 +125,28 @@ export function EditorNegotiationPanel({
 
                         {/* Category */}
                         <div>
-                            <p className="text-sm font-semibold text-muted-foreground">Category</p>
-                            <p className="text-sm capitalize">{selectedClause.risk_category.replace('_', ' ')}</p>
+                            <p className="text-base font-semibold text-muted-foreground">Category</p>
+                            <p className="text-base capitalize">{selectedClause.risk_category.replace('_', ' ')}</p>
                         </div>
 
                         {/* Clause Text */}
                         <div>
-                            <p className="text-sm font-semibold text-muted-foreground">Clause Text</p>
-                            <p className="text-sm bg-slate-50 p-2 rounded border">
+                            <p className="text-base font-semibold text-muted-foreground">Clause Text</p>
+                            <p className="text-base bg-slate-50 p-2 rounded border">
                                 {selectedClause.clause_text}
                             </p>
                         </div>
 
                         {/* Explanation */}
                         <div>
-                            <p className="text-sm font-semibold text-muted-foreground">Why This Is Risky</p>
-                            <p className="text-sm">{selectedClause.risk_explanation}</p>
+                            <p className="text-base font-semibold text-muted-foreground">Why This Is Risky</p>
+                            <p className="text-base">{selectedClause.risk_explanation}</p>
                         </div>
 
                         {/* Recommended Action */}
                         <div>
-                            <p className="text-sm font-semibold text-muted-foreground">Recommended Action</p>
-                            <p className="text-sm">{selectedClause.recommended_action}</p>
+                            <p className="text-base font-semibold text-muted-foreground">Recommended Action</p>
+                            <p className="text-base">{selectedClause.recommended_action}</p>
                         </div>
 
                         {/* Get Suggestions Button */}
@@ -197,7 +197,7 @@ export function EditorNegotiationPanel({
                                                 {round.round_number === 1 && ' (Alternative)'}
                                                 {round.round_number === 2 && ' (Fallback)'}
                                             </h4>
-                                            <p className="text-sm text-muted-foreground">
+                                            <p className="text-base text-muted-foreground">
                                                 Est. Risk Reduction: {round.risk_reduction.toFixed(0)}%
                                             </p>
                                         </div>
@@ -213,26 +213,26 @@ export function EditorNegotiationPanel({
 
                                     {/* Counter Clause */}
                                     <div>
-                                        <p className="text-sm font-semibold text-muted-foreground mb-1">
+                                        <p className="text-base font-semibold text-muted-foreground mb-1">
                                             Proposed Clause
                                         </p>
-                                        <p className="text-sm bg-green-50 p-2 rounded border border-green-200">
+                                        <p className="text-base bg-green-50 p-2 rounded border border-green-200">
                                             {round.counter_clause}
                                         </p>
                                     </div>
 
                                     {/* Justification */}
                                     <div>
-                                        <p className="text-sm font-semibold text-muted-foreground mb-1">
+                                        <p className="text-base font-semibold text-muted-foreground mb-1">
                                             Justification
                                         </p>
-                                        <p className="text-sm">{round.justification}</p>
+                                        <p className="text-base">{round.justification}</p>
                                     </div>
 
                                     {/* Validation Section */}
                                     {round.validation_result && (
                                         <div className="space-y-2 pt-2 border-t">
-                                            <p className="text-xs font-semibold text-slate-600">
+                                            <p className="text-sm font-semibold text-slate-600">
                                                 Validation Analysis:
                                             </p>
 
@@ -259,10 +259,10 @@ export function EditorNegotiationPanel({
                                     {/* Rejection Text (if exists) */}
                                     {round.rejection_text && (
                                         <div className="bg-slate-50 p-2 rounded">
-                                            <p className="text-xs font-semibold text-muted-foreground mb-1">
+                                            <p className="text-sm font-semibold text-muted-foreground mb-1">
                                                 If rejected by landlord:
                                             </p>
-                                            <p className="text-xs italic">{round.rejection_text}</p>
+                                            <p className="text-sm italic">{round.rejection_text}</p>
                                         </div>
                                     )}
                                 </div>

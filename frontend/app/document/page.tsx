@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ClausePosition, ClauseHighlightData } from '@/types/document';
 import { EditorDocumentResponse, EditorClausePosition } from '@/types/editor';
@@ -50,6 +50,86 @@ export default function DocumentAnalysisPage() {
     // Chat state
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
     const [isChatLoading, setIsChatLoading] = useState(false);
+
+    // Resizable panel state (left panel width percentage)
+    const [leftPanelWidth, setLeftPanelWidth] = useState(60);
+    const isResizing = useRef(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    // Editor view has its own container ref for correct width calculation
+    const isEditorResizing = useRef(false);
+    const editorContainerRef = useRef<HTMLDivElement>(null);
+
+    // Vertical resize state (top section height percentage within right panel)
+    const [topPanelHeight, setTopPanelHeight] = useState(40);
+    const isVerticalResizing = useRef(false);
+    const rightPanelRef = useRef<HTMLDivElement>(null);
+
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        isResizing.current = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    }, []);
+
+    const handleEditorMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        isEditorResizing.current = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    }, []);
+
+    const handleVerticalMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        isVerticalResizing.current = true;
+        document.body.style.cursor = 'row-resize';
+        document.body.style.userSelect = 'none';
+    }, []);
+
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (isResizing.current && containerRef.current) {
+                const rect = containerRef.current.getBoundingClientRect();
+                const newWidth = ((e.clientX - rect.left) / rect.width) * 100;
+                setLeftPanelWidth(Math.min(80, Math.max(30, newWidth)));
+            }
+            if (isEditorResizing.current && editorContainerRef.current) {
+                const rect = editorContainerRef.current.getBoundingClientRect();
+                const newWidth = ((e.clientX - rect.left) / rect.width) * 100;
+                setLeftPanelWidth(Math.min(80, Math.max(30, newWidth)));
+            }
+            if (isVerticalResizing.current && rightPanelRef.current) {
+                const rect = rightPanelRef.current.getBoundingClientRect();
+                const newHeight = ((e.clientY - rect.top) / rect.height) * 100;
+                setTopPanelHeight(Math.min(75, Math.max(20, newHeight)));
+            }
+        };
+
+        const handleMouseUp = () => {
+            if (isResizing.current) {
+                isResizing.current = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+            if (isEditorResizing.current) {
+                isEditorResizing.current = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+            if (isVerticalResizing.current) {
+                isVerticalResizing.current = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, []);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -287,10 +367,10 @@ export default function DocumentAnalysisPage() {
                         </div>
 
                         {/* PDF View Tab */}
-                        <TabsContent value="pdf" className="flex-1 flex m-0 overflow-hidden">
+                        <TabsContent value="pdf" className="flex-1 flex m-0 overflow-hidden" ref={containerRef}>
                             <>
                                 {/* Left Panel: PDF Viewer */}
-                                <div className="w-3/5 border-r flex flex-col overflow-hidden">
+                                <div style={{ width: `${leftPanelWidth}%` }} className="shrink-0 border-r flex flex-col overflow-hidden">
                                     <PDFViewerWithHighlights
                                         pdfFile={pdfFile}
                                         pdfBase64={analysis.pdf_base64}
@@ -300,10 +380,18 @@ export default function DocumentAnalysisPage() {
                                     />
                                 </div>
 
+                                {/* Resize Handle */}
+                                <div
+                                    onMouseDown={handleMouseDown}
+                                    className="w-1.5 cursor-col-resize bg-transparent hover:bg-blue-400 active:bg-blue-500 transition-colors shrink-0 relative group"
+                                >
+                                    <div className="absolute inset-y-0 -left-1 -right-1" />
+                                </div>
+
                                 {/* Right Panel: Clause Summary + Chat */}
-                                <div className="w-2/5 flex flex-col overflow-hidden">
+                                <div className="flex-1 min-w-0 flex flex-col overflow-hidden" ref={rightPanelRef}>
                                     {/* Clause Risk Summary - Scrollable */}
-                                    <div className="flex-1 overflow-auto border-b">
+                                    <div style={{ height: `${topPanelHeight}%` }} className="shrink-0 overflow-auto border-b">
                                         <ClauseRiskSummary
                                             selectedClauses={selectedClauses}
                                             pageNumber={selectedPageNumber}
@@ -311,8 +399,16 @@ export default function DocumentAnalysisPage() {
                                         />
                                     </div>
 
+                                    {/* Vertical Resize Handle */}
+                                    <div
+                                        onMouseDown={handleVerticalMouseDown}
+                                        className="h-1.5 cursor-row-resize bg-transparent hover:bg-blue-400 active:bg-blue-500 transition-colors shrink-0 relative group"
+                                    >
+                                        <div className="absolute inset-x-0 -top-1 -bottom-1" />
+                                    </div>
+
                                     {/* Chat Interface */}
-                                    <div className="flex-1 flex flex-col p-4 overflow-hidden">
+                                    <div className="flex-1 min-h-0 flex flex-col p-4 overflow-hidden">
                                         <h3 className="text-lg font-semibold mb-4">
                                             Ask Questions About the Document
                                         </h3>
@@ -321,9 +417,9 @@ export default function DocumentAnalysisPage() {
                                         <ScrollArea className="flex-1 min-h-0 mb-4 border rounded-lg p-4 bg-slate-50">
                                             {chatMessages.length === 0 ? (
                                                 <div className="text-center text-muted-foreground py-8">
-                                                    <p>No messages yet. Ask a question about the document!</p>
+                                                    <p className="text-base">No messages yet. Ask a question about the document!</p>
                                                     {selectedClauses && selectedClauses.length > 0 && (
-                                                        <p className="mt-2 text-sm">
+                                                        <p className="mt-2 text-base">
                                                             Currently viewing {selectedClauses.length} clause(s) from page {selectedPageNumber}
                                                         </p>
                                                     )}
@@ -338,10 +434,10 @@ export default function DocumentAnalysisPage() {
                                                                 : 'bg-white border mr-12'
                                                                 }`}
                                                         >
-                                                            <p className="text-sm font-semibold mb-1">
+                                                            <p className="text-base font-semibold mb-1">
                                                                 {msg.role === 'user' ? 'You' : 'Assistant'}
                                                             </p>
-                                                            <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                                                            <p className="text-base whitespace-pre-wrap">{msg.content}</p>
                                                         </div>
                                                     ))}
                                                     {isChatLoading && (
@@ -365,11 +461,11 @@ export default function DocumentAnalysisPage() {
                         </TabsContent>
 
                         {/* Editor View Tab */}
-                        <TabsContent value="editor" className="flex-1 flex m-0 overflow-hidden">
+                        <TabsContent value="editor" className="flex-1 flex m-0 overflow-hidden" ref={editorContainerRef}>
                             {editorData ? (
                                 <>
                                     {/* Left Panel: TipTap Editor */}
-                                    <div className="w-3/5 border-r p-4 flex flex-col overflow-hidden">
+                                    <div style={{ width: `${leftPanelWidth}%` }} className="shrink-0 border-r p-4 flex flex-col overflow-hidden">
                                         <DocumentTextEditor
                                             ref={editorRef}
                                             fullText={editorData.full_text}
@@ -378,8 +474,16 @@ export default function DocumentAnalysisPage() {
                                         />
                                     </div>
 
+                                    {/* Resize Handle */}
+                                    <div
+                                        onMouseDown={handleEditorMouseDown}
+                                        className="w-1.5 cursor-col-resize bg-transparent hover:bg-blue-400 active:bg-blue-500 transition-colors shrink-0 relative group"
+                                    >
+                                        <div className="absolute inset-y-0 -left-1 -right-1" />
+                                    </div>
+
                                     {/* Right Panel: Negotiation Panel */}
-                                    <div className="w-2/5 flex flex-col overflow-hidden">
+                                    <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
                                         <EditorNegotiationPanel
                                             selectedClause={selectedEditorClause}
                                             apiKey={apiKey}
