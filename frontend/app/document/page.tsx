@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ClausePosition, ClauseHighlightData } from '@/types/document';
 import { EditorDocumentResponse, EditorClausePosition } from '@/types/editor';
-import { PDFViewerWithHighlights } from '@/components/document/PDFViewerWithHighlights';
 import { ClauseRiskSummary } from '@/components/document/ClauseRiskSummary';
 import { ChatInterface } from '@/components/chat/ChatInterface';
 import { DocumentTextEditor, DocumentTextEditorRef } from '@/components/editor/DocumentTextEditor';
@@ -18,6 +17,12 @@ import { extractClausePositions } from '@/lib/api/document';
 import { extractForEditor } from '@/lib/api/editor';
 import { sendChatMessage } from '@/lib/api/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import dynamic from 'next/dynamic';
+
+const PDFViewerWithHighlights = dynamic(
+    () => import('@/components/document/PDFViewerWithHighlights').then(mod => mod.PDFViewerWithHighlights),
+    { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div> }
+);
 
 interface ChatMessage {
     role: 'user' | 'assistant';
